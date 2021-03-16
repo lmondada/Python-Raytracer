@@ -5,9 +5,3 @@ from .plane import *
 from .triangle import *
 from .triangle_mesh import *
 from .cuboid import *
-
-
-
-
-
-

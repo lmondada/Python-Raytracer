@@ -10,8 +10,3 @@ from .lights import *
 from .materials import *
 from .textures.texture import *
 from .animation import *
-
-
-
-
-
