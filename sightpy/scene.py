@@ -1,6 +1,8 @@
 from PIL import Image
 import numpy as np
 import time
+import copy
+from multiprocessing import Pool, cpu_count
 from .utils import colour_functions as cf
 from .camera import Camera
 from .utils.constants import *
@@ -10,6 +12,8 @@ from . import lights
 from .backgrounds.skybox import SkyBox
 from .backgrounds.panorama import Panorama
 
+def get_raycolor_tuple(x):
+    return get_raycolor(*x)
 
 class Scene():
     def __init__(self, ambient_color = rgb(0.01, 0.01, 0.01), n = vec3(1.0,1.0,1.0)) :
@@ -63,6 +67,7 @@ class Scene():
         t0 = time.time()
         color_RGBlinear = rgb(0.,0.,0.)
 
+        all_rays = [(self.camera.get_ray(self.n), copy.deepcopy(self)) for i in range(samples_per_pixel)]
         if progress_bar == True:
 
 
@@ -72,17 +77,21 @@ class Scene():
             except ModuleNotFoundError:
                  print("progressbar module is required. \nRun: pip install progressbar")
             
-            bar = progressbar.ProgressBar()
-            for i in bar(range(samples_per_pixel)):
-                color_RGBlinear += get_raycolor(self.camera.get_ray(self.n), scene = self)
-                bar.update(i)
+            bar = progressbar.ProgressBar(maxval=samples_per_pixel)
+            n_proc = cpu_count()
+
+
+            with Pool(processes=n_proc) as pool:
+                bar.start()
+                for i, color in enumerate(pool.imap_unordered(get_raycolor_tuple, all_rays)):
+                    color_RGBlinear += color
+                    bar.update(i)
+
+
         else:
-
-
-            for i in range(samples_per_pixel):
-                color_RGBlinear += get_raycolor(self.camera.get_ray(self.n), scene = self)
-                
-
+            with Pool(processes=n_proc) as pool:
+                for color in pool.imap_unordered(get_raycolor_tuple, all_rays):
+                    color_RGBlinear += color
 
         #average samples per pixel (antialiasing)
         color_RGBlinear = color_RGBlinear/samples_per_pixel
