@@ -95,16 +95,19 @@ class Refractive(Material):
             if hit.surface.mc:
                 # we lose the color-dependency of F because of MC
                 pick = lambda randomness: Ray.where(
-                    (randomness > F.average()) & non_TiR, 
-                    refracted_rays,
-                    reflected_rays
+                    (randomness > F.average()) & non_TiR, refracted_rays, reflected_rays
                 )
                 rays = pick(np.random.rand(len(reflected_rays)))
                 color = get_raycolor(rays, scene)
             else:
                 color = get_raycolor(reflected_rays, scene) * F
                 if np.any(non_TiR):
-                    color += get_raycolor(refracted_rays.extract(non_TiR), scene).place(non_TiR) * T
+                    color += (
+                        get_raycolor(refracted_rays.extract(non_TiR), scene).place(
+                            non_TiR
+                        )
+                        * T
+                    )
 
             # absorption:
             # approximation using wavelength for red = 630 nm, green 550 nm, blue 475 nm

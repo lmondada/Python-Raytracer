@@ -135,6 +135,23 @@ class vec3:
         except TypeError:
             return shape
 
+    def __getitem__(self, ind):
+        return vec3(self.x[ind], self.y[ind], self.z[ind])
+
+    def broadcast_to(self, shape):
+        return vec3(
+            np.broadcast_to(self.x, shape),
+            np.broadcast_to(self.y, shape),
+            np.broadcast_to(self.z, shape),
+        )
+
+    @staticmethod
+    def concatenate(vecs):
+        x = [vec.x for vec in vecs]
+        y = [vec.y for vec in vecs]
+        z = [vec.z for vec in vecs]
+        return vec3(np.concatenate(x), np.concatenate(y), np.concatenate(z))
+
     def square_length(self):
         return self.dot(self)
 

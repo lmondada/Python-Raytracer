@@ -17,6 +17,14 @@ def get_raycolor_tuple(x):
     return get_raycolor(*x)
 
 
+def batch_rays(rays, batch_size):
+    batches = []
+    n_rays = len(rays)
+    for ray_ind in range(0, n_rays, batch_size):
+        batches.append(Ray.concatenate(rays[ray_ind : ray_ind + batch_size]))
+    return batches
+
+
 class Scene:
     def __init__(self, ambient_color=rgb(0.01, 0.01, 0.01), n=vec3(1.0, 1.0, 1.0)):
         # n = index of refraction (by default index of refraction of air n = 1.)
@@ -60,17 +68,25 @@ class Scene:
         self.scene_primitives += [primitive]
         self.collider_list += primitive.collider_list
 
-    def render(self, samples_per_pixel, progress_bar=False):
+    def render(self, samples_per_pixel, progress_bar=False, batch_size=None):
 
         print("Rendering...")
 
         t0 = time.time()
         color_RGBlinear = rgb(0.0, 0.0, 0.0)
 
-        all_rays = [
-            (self.camera.get_ray(self.n), copy.deepcopy(self))
-            for i in range(samples_per_pixel)
-        ]
+        all_rays = [self.camera.get_ray(self.n) for i in range(samples_per_pixel)]
+
+        n_proc = cpu_count()
+        rays_per_batch = len(self.camera.get_ray(self.n))
+        batch_size = batch_size or np.ceil(samples_per_pixel / n_proc).astype(int)
+
+        all_rays_batched = batch_rays(all_rays, batch_size)
+        args = [(batch, copy.deepcopy(self)) for batch in all_rays_batched]
+        # all_rays = [
+        #     (self.camera.get_ray(self.n), copy.deepcopy(self))
+        #     for i in range(samples_per_pixel)
+        # ]
         if progress_bar == True:
             try:
                 import progressbar
@@ -78,21 +94,26 @@ class Scene:
                 print("progressbar module is required. \nRun: pip install progressbar")
 
             bar = progressbar.ProgressBar(maxval=samples_per_pixel)
-            n_proc = cpu_count()
 
             with Pool(processes=n_proc) as pool:
                 bar.start()
                 for i, color in enumerate(
-                    pool.imap_unordered(get_raycolor_tuple, all_rays)
+                    pool.imap_unordered(get_raycolor_tuple, args)
                 ):
-                    color_RGBlinear += color
+                    for batch in range(batch_size):
+                        beg, end = batch * rays_per_batch, (batch + 1) * rays_per_batch
+                        color_RGBlinear += color[beg:end]
                     bar.update(i)
                 bar.finish()
 
         else:
             with Pool(processes=n_proc) as pool:
-                for color in pool.imap_unordered(get_raycolor_tuple, all_rays):
-                    color_RGBlinear += color
+                for i, color in enumerate(
+                    pool.imap_unordered(get_raycolor_tuple, args)
+                ):
+                    for batch in range(batch_size):
+                        beg, end = batch * rays_per_batch, (batch + 1) * rays_per_batch
+                        color_RGBlinear += color[beg:end]
 
         # average samples per pixel (antialiasing)
         color_RGBlinear = color_RGBlinear / samples_per_pixel

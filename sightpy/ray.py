@@ -11,14 +11,14 @@ class Ray:
         self, origin, dir, depth, n, reflections, transmissions, diffuse_reflections
     ):
         self.length = max(len(origin), len(dir), len(n))
-        for xs in [origin, dir, n]:
-            if len(xs) not in [1, self.length]:
-                raise ValueError("All vec3 arguments must have same length!")
+        shape = [self.length]
 
-        self.origin = origin  # the point where the ray comes from
-        self.dir = dir  # direction of the ray
+        self.origin = origin.broadcast_to(shape)  # the point where the ray comes from
+        self.dir = dir.broadcast_to(shape)  # direction of the ray
         self.depth = depth  # ray_depth is the number of the refrections + transmissions/refractions, starting at zero for camera rays
-        self.n = n  # ray_n is the index of refraction of the media in which the ray is travelling
+        self.n = n.broadcast_to(
+            shape
+        )  # ray_n is the index of refraction of the media in which the ray is travelling
 
         # Instead of defining a index of refraction (n) for each wavelenght (computationally expensive) we aproximate defining the index of refraction
         # using a vec3 for red = 630 nm, green 555 nm, blue 475 nm, the most sensitive wavelenghts of human eye.
@@ -45,7 +45,18 @@ class Ray:
 
     def __len__(self):
         return self.length
-    
+
+    def __getitem__(self, ind):
+        return Ray(
+            self.origin[ind],
+            self.dir[ind],
+            self.depth,
+            self.n[ind],
+            self.reflections,
+            self.transmissions,
+            self.diffuse_reflections,
+        )
+
     @staticmethod
     def where(cond, x, y):
         if x.depth != y.depth:
@@ -58,6 +69,28 @@ class Ray:
             max(x.reflections, y.reflections),
             max(x.transmissions, y.transmissions),
             max(x.diffuse_reflections, y.diffuse_reflections),
+        )
+
+    @staticmethod
+    def concatenate(rays):
+        origin = [r.origin for r in rays]
+        dir = [r.dir for r in rays]
+        depth = rays[0].depth
+        n = [r.n for r in rays]
+        reflections = max(r.reflections for r in rays)
+        transmissions = max(r.transmissions for r in rays)
+        diffuse_reflections = max(r.diffuse_reflections for r in rays)
+
+        if not all(r.depth == depth for r in rays):
+            print("All rays must have same depth!")
+        return Ray(
+            vec3.concatenate(origin),
+            vec3.concatenate(dir),
+            depth,
+            vec3.concatenate(n),
+            reflections,
+            transmissions,
+            diffuse_reflections,
         )
 
 
