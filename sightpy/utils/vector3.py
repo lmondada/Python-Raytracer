@@ -70,9 +70,11 @@ class vec3:
     def __abs__(self):
         return vec3(np.abs(self.x), np.abs(self.y), np.abs(self.z))
 
+    @staticmethod
     def real(v):
         return vec3(np.real(v.x), np.real(v.y), np.real(v.z))
 
+    @staticmethod
     def imag(v):
         return vec3(np.imag(v.x), np.imag(v.y), np.imag(v.z))
 
@@ -84,9 +86,6 @@ class vec3:
 
     def zxy(self):
         return vec3(self.z, self.x, self.y)
-
-    def xyz(self):
-        return vec3(self.x, self.y, self.z)
 
     def average(self):
         return (self.x + self.y + self.z) / 3
@@ -108,9 +107,11 @@ class vec3:
     def dot(self, v):
         return self.x * v.x + self.y * v.y + self.z * v.z
 
+    @staticmethod
     def exp(v):
         return vec3(np.exp(v.x), np.exp(v.y), np.exp(v.z))
 
+    @staticmethod
     def sqrt(v):
         return vec3(np.sqrt(v.x), np.sqrt(v.y), np.sqrt(v.z))
 
@@ -140,6 +141,7 @@ class vec3:
     def extract(self, cond):
         return vec3(extract(cond, self.x), extract(cond, self.y), extract(cond, self.z))
 
+    @staticmethod
     def where(cond, out_true, out_false):
         return vec3(
             np.where(cond, out_true.x, out_false.x),
@@ -147,6 +149,7 @@ class vec3:
             np.where(cond, out_true.z, out_false.z),
         )
 
+    @staticmethod
     def select(mask_list, out_list):
         out_list_x = [i.x for i in out_list]
         out_list_y = [i.y for i in out_list]
