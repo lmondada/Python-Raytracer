@@ -19,7 +19,7 @@ class Diffuse(Material):
             self.diff_texture = diff_color
 
         self.diffuse_rays = diffuse_rays
-        self.max_diffuse_reflections = 4
+        self.max_diffuse_reflections = 2
         self.ambient_weight = ambient_weight
 
     def get_color(self, scene, ray, hit):

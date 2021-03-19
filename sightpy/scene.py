@@ -87,6 +87,7 @@ class Scene:
                 ):
                     color_RGBlinear += color
                     bar.update(i)
+                bar.finish()
 
         else:
             with Pool(processes=n_proc) as pool:
