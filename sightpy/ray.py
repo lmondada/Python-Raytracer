@@ -10,6 +10,10 @@ class Ray:
     def __init__(
         self, origin, dir, depth, n, reflections, transmissions, diffuse_reflections
     ):
+        self.length = max(len(origin), len(dir), len(n))
+        for xs in [origin, dir, n]:
+            if len(xs) not in [1, self.length]:
+                raise ValueError("All vec3 arguments must have same length!")
 
         self.origin = origin  # the point where the ray comes from
         self.dir = dir  # direction of the ray
@@ -37,6 +41,23 @@ class Ray:
             self.reflections,
             self.transmissions,
             self.diffuse_reflections,
+        )
+
+    def __len__(self):
+        return self.length
+    
+    @staticmethod
+    def where(cond, x, y):
+        if x.depth != y.depth:
+            raise ValueError("Both rays must have same depth")
+        return Ray(
+            vec3.where(cond, x.origin, y.origin),
+            vec3.where(cond, x.dir, y.dir),
+            x.depth,
+            vec3.where(cond, x.n, y.n),
+            max(x.reflections, y.reflections),
+            max(x.transmissions, y.transmissions),
+            max(x.diffuse_reflections, y.diffuse_reflections),
         )
 
 

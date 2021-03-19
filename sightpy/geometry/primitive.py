@@ -4,13 +4,14 @@ import numpy as np
 
 
 class Primitive:
-    def __init__(self, center, material, max_ray_depth=1, shadow=True):
+    def __init__(self, center, material, max_ray_depth=1, shadow=True, mc=False):
         self.center = center
         self.material = material
         self.material.assigned_primitive = self
         self.shadow = shadow
         self.collider_list = []
         self.max_ray_depth = max_ray_depth
+        self.mc = mc
 
     def rotate(self, θ, u):
 

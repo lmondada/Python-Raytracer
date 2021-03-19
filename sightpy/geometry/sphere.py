@@ -5,8 +5,10 @@ from ..geometry import Primitive, Collider
 
 
 class Sphere(Primitive):
-    def __init__(self, center, material, radius, max_ray_depth=5, shadow=True):
-        super().__init__(center, material, max_ray_depth, shadow=shadow)
+    def __init__(
+        self, center, material, radius, max_ray_depth=5, shadow=True, mc=False
+    ):
+        super().__init__(center, material, max_ray_depth, shadow=shadow, mc=mc)
         self.collider_list += [
             Sphere_Collider(assigned_primitive=self, center=center, radius=radius)
         ]

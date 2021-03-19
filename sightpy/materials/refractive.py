@@ -54,55 +54,57 @@ class Refractive(Material):
             cosθt = vec3.sqrt(1.0 - (n1 / n2) ** 2 * (1.0 - cosθi ** 2))
             r_per = (n1 * cosθi - n2 * cosθt) / (n1 * cosθi + n2 * cosθt)
             r_par = -1.0 * (n1 * cosθt - n2 * cosθi) / (n1 * cosθt + n2 * cosθi)
-            F = (np.abs(r_per) ** 2 + np.abs(r_par) ** 2) / 2.0
+            F = (abs(r_per) ** 2 + abs(r_par) ** 2) / 2.0
+            T = 1.0 - F
 
-            # compute reflection
+            # compute reflection rays
             reflected_ray_dir = (ray.dir - N * 2.0 * ray.dir.dot(N)).normalize()
-            color += (
-                get_raycolor(
-                    Ray(
-                        nudged,
-                        reflected_ray_dir,
-                        ray.depth + 1,
-                        ray.n,
-                        ray.reflections + 1,
-                        ray.transmissions,
-                        ray.diffuse_reflections,
-                    ),
-                    scene,
-                )
-            ) * F
+            reflected_rays = Ray(
+                nudged,
+                reflected_ray_dir,
+                ray.depth + 1,
+                ray.n,
+                ray.reflections + 1,
+                ray.transmissions,
+                ray.diffuse_reflections,
+            )
 
-            # compute refraction
+            # compute refraction rays
             # Spectrum dispersion is not implemented.
             # We approximate refraction direction averaging index of refraction of each wavelenght
             n1_div_n2_aver = n1_div_n2.average()
             sin2θt = (n1_div_n2_aver) ** 2 * (1.0 - cosθi ** 2)
 
             non_TiR = sin2θt <= 1.0
-            if np.any(non_TiR):  # avoid total internal reflection
+            refracted_ray_dir = (
+                ray.dir * (n1_div_n2_aver)
+                + N * (n1_div_n2_aver * cosθi - np.sqrt(1 - np.clip(sin2θt, 0, 1)))
+            ).normalize()
+            nudged = hit.point - N * 0.000001  # nudged for refraction
+            refracted_rays = Ray(
+                nudged,
+                refracted_ray_dir,
+                ray.depth + 1,
+                n2,
+                ray.reflections,
+                ray.transmissions + 1,
+                ray.diffuse_reflections,
+            )
 
-                refracted_ray_dir = (
-                    ray.dir * (n1_div_n2_aver)
-                    + N * (n1_div_n2_aver * cosθi - np.sqrt(1 - np.clip(sin2θt, 0, 1)))
-                ).normalize()
-                nudged = hit.point - N * 0.000001  # nudged for refraction
-                T = 1.0 - F
-                refracted_color = (
-                    get_raycolor(
-                        Ray(
-                            nudged,
-                            refracted_ray_dir,
-                            ray.depth + 1,
-                            n2,
-                            ray.reflections,
-                            ray.transmissions + 1,
-                            ray.diffuse_reflections,
-                        ).extract(non_TiR),
-                        scene,
-                    )
-                ) * T.extract(non_TiR)
-                color += refracted_color.place(non_TiR)
+            # compute color, either deterministically or using Monte Carlo
+            if hit.surface.mc:
+                # we lose the color-dependency of F because of MC
+                pick = lambda randomness: Ray.where(
+                    (randomness > F.average()) & non_TiR, 
+                    refracted_rays,
+                    reflected_rays
+                )
+                rays = pick(np.random.rand(len(reflected_rays)))
+                color = get_raycolor(rays, scene)
+            else:
+                color = get_raycolor(reflected_rays, scene) * F
+                if np.any(non_TiR):
+                    color += get_raycolor(refracted_rays.extract(non_TiR), scene).place(non_TiR) * T
 
             # absorption:
             # approximation using wavelength for red = 630 nm, green 550 nm, blue 475 nm

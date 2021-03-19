@@ -128,6 +128,13 @@ class vec3:
     def length(self):
         return np.sqrt(self.dot(self))
 
+    def __len__(self):
+        shape = self.shape()
+        try:
+            return shape[0]
+        except TypeError:
+            return shape
+
     def square_length(self):
         return self.dot(self)
 
