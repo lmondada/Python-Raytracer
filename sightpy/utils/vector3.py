@@ -215,11 +215,43 @@ class vec3:
         elif isinstance(self.x, np.ndarray):
             return self.x.shape
 
+    def append(self, vs):
+        def ensure_is_list(v):
+            if not isinstance(self.x, np.ndarray):
+                v.x = [v.x]
+                v.y = [v.y]
+                v.z = [v.z]
+            return v
+
+        # ensure self has a list format.
+        ensure_is_list(self)
+
+        if isinstance(vs, vec3):
+            return vec3(
+                np.concatenate((self.x, vs.x)),
+                np.concatenate((self.y, vs.y)),
+                np.concatenate((self.z, vs.z))
+            )
+        if isinstance(vs, Tuple) and len(vs) > 0:
+            vs = tuple(map(ensure_is_list, vs))
+            return vec3(
+                np.concatenate((self.x, *(v.x for v in vs))),
+                np.concatenate((self.y, *(v.y for v in vs))),
+                np.concatenate((self.z, *(v.z for v in vs)))
+            )
+
+    def splice(self, i: int = None, j: int = None):
+        return vec3(
+            self.x[i:j],
+            self.y[i:j],
+            self.z[i:j],
+        )
+
     def mean(self, axis):
         return vec3(
             np.mean(self.x, axis=axis),
             np.mean(self.y, axis=axis),
-            np.mean(self.z, axis=axis),
+            np.mean(self.z, axis=axis)
         )
 
     def __eq__(self, other):

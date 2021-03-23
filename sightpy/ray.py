@@ -19,7 +19,7 @@ class Ray:
         self.dir = dir        # direction of the ray
         self.depth = depth    # ray_depth is the number of the reflections + transmissions/refractions,
         #                     # starting at zero for camera rays
-        self.n = nn.broadcast_to(
+        self.n = n.broadcast_to(
             shape
         )                     # ray_n is the index of refraction of the media in which the ray is travelling
 
@@ -69,6 +69,9 @@ class Ray:
             self.dir[ind],
             self.depth,
             self.n[ind],
+            self.p_z[ind],
+            self.p_z_ref[ind],
+            self.color[ind],
             self.reflections,
             self.transmissions,
             self.diffuse_reflections,
