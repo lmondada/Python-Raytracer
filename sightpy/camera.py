@@ -29,7 +29,8 @@ class Camera:
         self.cameraRight = (self.cameraFwd.cross(vec3(0.0, 1.0, 0.0))).normalize()
         self.cameraUp = self.cameraRight.cross(self.cameraFwd)
 
-        # if you use a lens_radius >= 0.0 make sure that samples_per_pixel is a large number. Otherwise you'll get a lot of noise
+        # if you use a lens_radius >= 0.0 make sure that samples_per_pixel is a large number.
+        # Otherwise you'll get a lot of noise
         self.lens_radius = aperture / 2.0
         self.focal_distance = focal_distance
 
@@ -42,7 +43,8 @@ class Camera:
         )
 
         # we are going to cast a total of screen_width * screen_height * samples_per_pixel rays
-        # xx,yy store the origin of each ray in a 3d array where the first and second dimension are the x,y coordinates of each pixel
+        # xx,yy store the origin of each ray in a 3d array where the first and second dimension
+        # are the x,y coordinates of each pixel
         # and the third dimension is the sample index of each pixel
         xx, yy = np.meshgrid(self.x, self.y)
         self.x = xx.flatten()
@@ -78,7 +80,10 @@ class Camera:
             origin=ray_origin,
             dir=ray_dir,
             depth=0,
-            n=n,
+            n=n.repeat(x.shape[0]),
+            trans_probs=np.ones((x.shape[0])),
+            trans_probs_ref=np.ones((x.shape[0])),
+            color=rgb(0., 0., 0.).repeat(x.shape[0]),
             reflections=0,
             transmissions=0,
             diffuse_reflections=0,

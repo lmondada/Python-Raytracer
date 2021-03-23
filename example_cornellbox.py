@@ -123,7 +123,7 @@ def main():
     )
     # Render
 
-    img = Sc.render(samples_per_pixel=100, progress_bar=True)
+    img, gold_bars = Sc.render(samples_per_pixel=100, progress_bar=True)
     # you are going to need more than 10 samples to remove the noise. At least 1000 for a nice image.
 
     img.save("cornell_box.png")
