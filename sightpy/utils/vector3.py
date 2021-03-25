@@ -1,6 +1,6 @@
 import numpy as np
 import numbers
-
+from typing import Tuple
 
 def extract(cond, x):
     if isinstance(x, numbers.Number):
@@ -67,8 +67,11 @@ class vec3:
         elif isinstance(v, numbers.Number) or isinstance(v, np.ndarray):
             return vec3(v / self.x, v / self.y, v / self.z)
 
-    def __abs__(self):
+    def abs(self):
         return vec3(np.abs(self.x), np.abs(self.y), np.abs(self.z))
+
+    def __abs__(self):
+        return self.abs()
 
     @staticmethod
     def real(v):

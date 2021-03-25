@@ -174,8 +174,8 @@ class Scene:
                         pool.imap_unordered(get_raycolor_tuple, args)
                 ):
                     for batch in range(batch_size):
-                        color, mined_dust = compute_cols(ray, copy_order)
                         beg, end = batch * rays_per_batch, (batch + 1) * rays_per_batch
+                        color, mined_dust = compute_cols(ray[beg:end], copy_order, mined_dust)
                         color_RGBlinear += color[beg:end]
                     bar.update(i)
                 bar.finish()
@@ -185,8 +185,8 @@ class Scene:
                 for i, (ray, copy_order) in enumerate(
                     pool.imap_unordered(get_raycolor_tuple, args)
                 ):
+                    color, mined_dust = compute_cols(ray, copy_order, mined_dust)
                     for batch in range(batch_size):
-                        color, mined_dust = compute_cols(ray, copy_order)
                         beg, end = batch * rays_per_batch, (batch + 1) * rays_per_batch
                         color_RGBlinear += color[beg:end]
 

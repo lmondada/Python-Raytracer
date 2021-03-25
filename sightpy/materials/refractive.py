@@ -24,7 +24,6 @@ class Refractive(Material):
         # and for transparent materials like glass is  usually between (0.j , 1e-7j)
 
     def get_color(self, scene, ray, hit):
-
         hit.point = ray.origin + ray.dir * hit.distance  # intersection point
         N = hit.material.get_Normal(hit)  # normal
 
@@ -50,7 +49,7 @@ class Refractive(Material):
                 cosθt = vec3.sqrt(1. - (n1 / n2) ** 2 * (1. - cosθi ** 2))
                 r_per = (n1 * cosθi - n2 * cosθt) / (n1 * cosθi + n2 * cosθt)
                 r_par = -1. * (n1 * cosθt - n2 * cosθi) / (n1 * cosθt + n2 * cosθi)
-                F = (np.abs(r_per) ** 2 + np.abs(r_par) ** 2) / 2.
+                F = (r_per.abs() ** 2 + r_par.abs() ** 2) / 2.
                 return F
 
             n_rays = ray.p_z.shape[0]
