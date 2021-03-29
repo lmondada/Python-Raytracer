@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.stats import norm
 from ..utils.vector3 import vec3
 from abc import abstractmethod
 
@@ -39,7 +40,10 @@ class hemisphere_pdf(PDF):
         self.normal = normal
 
     def value(self, ray_dir):
-        return 1.0 / (2.0 * np.pi)
+        val = 1.0 / (2.0 * np.pi)
+        assert val <= 1
+        assert val >= 0
+        return val
 
     def generate(self):
         r = random_in_unit_sphere(self.shape)
@@ -89,7 +93,7 @@ class spherical_caps_pdf(PDF):
         for i in range(self.l):
             PDF_value += np.where(
                 ray_dir.dot(self.ax_w_list[i]) > self.cosθmax_list[i],
-                # todo: this was not a probability - has been changed!!
+                # this was not a probability - has been changed!!
                 np.clip((1 - self.cosθmax_list[i]) * 2 * np.pi, 0, 1),
                 0.0,
             )
@@ -187,18 +191,13 @@ class normal_pdf(PDF):
 
     def value(self, x: vec3) -> np.array:
         """Evaluate the normal at the given point."""
-        # A = (2 * pi * sigma^2)^-0.5
-        # B = -0.5 * (x - mu / sigma)^2
-        # y = A * exp(B)
-
-        a = 2 * np.pi * (self.sigma ** 2)
-        A = a ** -0.5
-        b = (x - self.mu) / self.sigma
-        B = -0.5 * (b ** 2)
-        y = A * vec3.exp(B)
-        val = y.x * y.y * y.z
-        # assert max(val) <= 1
-        # assert min(val) >= -0
+        epsilon = 0.00001
+        val_x = norm.cdf(x.x + epsilon, self.mu.x, self.sigma) - norm.cdf(x.x - epsilon, self.mu.x, self.sigma)
+        val_y = norm.cdf(x.y + epsilon, self.mu.y, self.sigma) - norm.cdf(x.y - epsilon, self.mu.y, self.sigma)
+        val_z = norm.cdf(x.z + epsilon, self.mu.z, self.sigma) - norm.cdf(x.z - epsilon, self.mu.z, self.sigma)
+        val = val_x * val_y * val_z
+        assert max(val) <= 1
+        assert min(val) >= 0
         return val
 
     def generate(self) -> vec3:
