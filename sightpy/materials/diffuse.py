@@ -10,8 +10,8 @@ from ..textures import *
 
 
 class Diffuse(Material):
-    def __init__(self, diff_color, diff_color_ref=rgb(0.5, 0.5, 0.5), diffuse_rays=20, ambient_weight=0.5,
-                 ambient_weight_ref=0.25, **kwargs):
+    def __init__(self, diff_color, diff_color_ref=rgb(0.5, 0.5, 0.5), diffuse_rays=10, ambient_weight=0.5,
+                 ambient_weight_ref=0.5, **kwargs):
         super().__init__(**kwargs)
 
         if isinstance(diff_color, vec3):
@@ -42,12 +42,11 @@ class Diffuse(Material):
 
         return s_pdf
 
-    def get_color(self, scene, ray, hit, use_ref=False):
-        """Get the colour of this material for the given ray and intersect details.
-        If use_ref, this is computed concurrently for both actual and reference parameter values."""
-
-        hit.point = (ray.origin + ray.dir * hit.distance)  # intersection point
-        N = hit.material.get_Normal(hit)  # normal
+    def get_color(self, scene, ray, hit, max_index):
+        """Get the colour of this material for the given ray and intersect details."""
+        
+        hit.point = (ray.origin + ray.dir * hit.distance) # intersection point
+        N = hit.material.get_Normal(hit)                  # normal 
 
         diff_color = self.diff_texture.get_color(hit)  # Own colour at this point
         diff_color_ref = self.diff_texture_ref.get_color(hit)
@@ -70,7 +69,7 @@ class Diffuse(Material):
             ray.p_z = np.full(ray.p_z.shape, -1)
             ray.p_z_ref = np.full(ray.p_z_ref.shape, -1)
             ray.color = color.repeat(ray.p_z.shape[0])
-            return ray, []
+            return ray
 
         # Compute n_diffuse_rays ray colours:
         nudged = hit.point + N * .000001
@@ -100,29 +99,56 @@ class Diffuse(Material):
         PDF_val = s_pdf.value(ray_dir)
         PDF_val_ref = s_pdf_ref.value(ray_dir)
 
+        # Generate indices for the new rays
+        new_ray_indices = np.array([
+            # Keep the old indices in the right places
+            ray.ray_index[i] if j == 0
+            else max_index + i * (n_diffuse_rays - 1) + j
+            for i in range(n_rays_in)
+            for j in range(n_diffuse_rays)
+        ])
+        new_max_index = max_index + n_rays_in * (n_diffuse_rays - 1) if n_diffuse_rays > 1 else max_index
+
+        new_ray_deps = np.repeat(
+            ray.ray_index,
+            n_diffuse_rays
+        ).reshape(n_rays_in * n_diffuse_rays, 1)
+
         # Recurse to compute the colour of the sampled rays
-        out_ray, copy_order = get_raycolor(
+        out_ray, _ = get_raycolor(
             Ray(
-                nudged_repeated, ray_dir, ray.depth + 1, n_repeated,
-                                          pz_repeated * PDF_val, pz_ref_repeated * PDF_val_ref,
+                ray.pixel_index.repeat(n_diffuse_rays),
+                new_ray_indices,
+                np.hstack((np.repeat(ray.ray_dependencies, n_diffuse_rays, axis=0), new_ray_deps)),
+                nudged_repeated,
+                ray_dir,
+                ray.depth + 1,
+                n_repeated,
+                pz_repeated * PDF_val,
+                pz_ref_repeated * PDF_val_ref,
                 ray.color.repeat(n_diffuse_rays),
-                                          ray.reflections + 1, ray.transmissions, ray.diffuse_reflections + 1
+                ray.reflections + 1,
+                ray.transmissions,
+                ray.diffuse_reflections + 1
             ),
-            scene
+            scene,
+            new_max_index,
         )
         color_temp = out_ray.color
         # dot product of each ray with the normal
         NdotL = np.clip(ray_dir.dot(N_repeated), 0., 1.)
 
         # update values to account for any new rays.
-        if np.array(copy_order).shape[0] > 0:
-            indexing_order = [
-                *range(n_rays_in * n_diffuse_rays),
-                *copy_order
-            ]
-            PDF_val = np.array([PDF_val[round(pos)] for pos in indexing_order])
-            PDF_val_ref = np.array([PDF_val_ref[round(pos)] for pos in indexing_order])
-            NdotL = np.array([NdotL[round(pos)] for pos in indexing_order])
+        indexing_order = [
+            np.where(ray.ray_index == pos)[0][0] for pos in out_ray.ray_dependencies[:, -1]
+        ]
+
+        PDF_val = np.array([PDF_val[round(pos)] for pos in indexing_order])
+        PDF_val_ref = np.array([PDF_val_ref[round(pos)] for pos in indexing_order])
+        NdotL = np.array([NdotL[round(pos)] for pos in indexing_order])
+
+        # We have consumed this dependency layer so can now remove it.
+        out_ray.ray_dependencies = np.delete(out_ray.ray_dependencies, -1, axis=1)
 
         # Weight this colour by the probability of having sampled each ray
         # We use the Lambertian BRDF
@@ -140,27 +166,4 @@ class Diffuse(Material):
         col_matches = out_ray.color == color_ref
         out_ray.p_z_ref = out_ray.p_z_ref * col_matches
 
-        # We want the final ray order is something like:
-        # initial rays
-        # duplicates of initial rays
-        # sub-duplicates according to copy_order, which we need to point back to the intitial rays
-        # But at the moment, initial rays and duplicates are all mixed up.
-        initial_mask = [
-            i in [i * n_diffuse_rays for i in range(n_rays_in)]
-            for i in range(out_ray.p_z.shape[0])
-        ]
-        initial_ray = out_ray.extract(initial_mask)
-        rest_ray = out_ray.extract(np.logical_not(initial_mask))
-        out_ray = initial_ray.combine(rest_ray)
-
-        initial_order = np.array(range(n_rays_in))
-        duplicate_order = np.repeat(initial_order, n_diffuse_rays - 1)
-        base_indices = [
-            *initial_order,
-            *duplicate_order
-        ]
-        full_copy_order = np.array([
-            *duplicate_order,
-            *[base_indices[round(pos)] for pos in copy_order]
-        ])
-        return out_ray, full_copy_order
+        return out_ray

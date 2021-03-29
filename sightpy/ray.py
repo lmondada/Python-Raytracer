@@ -9,11 +9,16 @@ class Ray:
     Note that we can encode a series of individual rays within this class."""
 
     def __init__(
-            self, origin, dir, depth, n, trans_probs, trans_probs_ref, color,
+            self, pixel_index, ray_index, ray_dependencies,
+            origin, dir, depth, n, trans_probs, trans_probs_ref, color,
             reflections, transmissions, diffuse_reflections
         ):
         self.length = max(len(origin), len(dir), len(n))
         shape = [self.length]
+
+        self.pixel_index = pixel_index  # keep track of which pixel this ray belongs to.
+        self.ray_index = ray_index  # Each ray has a unique index
+        self.ray_dependencies = ray_dependencies  # keep track of inter-ray dependencies.
 
         self.origin = origin  # the point where the ray comes from
         self.dir = dir        # direction of the ray
@@ -47,7 +52,14 @@ class Ray:
         #                                               # starting at zero for camera rays
 
     def extract(self, hit_check):
+        # ray_dependencies is a 2d array, so adjust hit_check accordingly
+        target_shape = sum(hit_check), self.ray_dependencies.shape[1]
+        hit_check_dep = np.reshape(hit_check, (self.length, 1))
+        hit_check_dep = hit_check_dep.repeat(target_shape[1], axis=1)
         return Ray(
+            np.extract(hit_check, self.pixel_index),
+            np.extract(hit_check, self.ray_index),
+            np.extract(hit_check_dep, self.ray_dependencies).reshape(target_shape),
             self.origin.extract(hit_check),
             self.dir.extract(hit_check),
             self.depth,
@@ -65,6 +77,9 @@ class Ray:
 
     def __getitem__(self, ind):
         return Ray(
+            self.pixel_index[ind],
+            self.ray_index[ind],
+            self.ray_dependencies[ind],
             self.origin[ind],
             self.dir[ind],
             self.depth,
@@ -82,6 +97,9 @@ class Ray:
         if x.depth != y.depth:
             raise ValueError("Both rays must have same depth")
         return Ray(
+            np.where(cond, x.pixel_index, y.pixel_index),
+            np.where(cond, x.ray_index, y.ray_index),
+            np.where(cond, x.ray_dependencies, y.ray_dependencies),
             vec3.where(cond, x.origin, y.origin),
             vec3.where(cond, x.dir, y.dir),
             x.depth,
@@ -96,6 +114,9 @@ class Ray:
 
     @staticmethod
     def concatenate(rays):
+        pixel_index = [r.pixel_index for r in rays]
+        ray_index = [r.ray_index for r in rays]
+        ray_dependencies = [r.ray_dependencies for r in rays]
         origin = [r.origin for r in rays]
         dir = [r.dir for r in rays]
         depth = rays[0].depth
@@ -110,6 +131,9 @@ class Ray:
         if not all(r.depth == depth for r in rays):
             print("All rays must have same depth!")
         return Ray(
+            np.concatenate(pixel_index),
+            np.concatenate(ray_index),
+            np.vstack(ray_dependencies),
             vec3.concatenate(origin),
             vec3.concatenate(dir),
             depth,
@@ -122,9 +146,29 @@ class Ray:
             diffuse_reflections,
         )
 
+    def place(self, mask, other):
+        # ray_dependencies is a 2d array, so adjust hit_check accordingly
+        target_shape = sum(mask), self.ray_dependencies.shape[1]
+        mask_dep = np.reshape(mask, (self.length, 1))
+        mask_dep = mask_dep.repeat(target_shape[1], axis=1)
+
+        self.origin = self.origin.place_into(mask, other.origin)
+        self.dir = self.dir.place_into(mask, other.dir)
+        # self.n = self.n.place_into(mask, other.n)
+        self.color = self.color.place_into(mask, other.color)
+        np.place(self.pixel_index, mask, other.pixel_index)
+        np.place(self.ray_index, mask, other.ray_index)
+        np.place(self.ray_dependencies, mask_dep, other.ray_dependencies.reshape(-1))
+        np.place(self.p_z, mask, other.p_z)
+        np.place(self.p_z_ref, mask, other.p_z_ref)
+
     def combine(self, other: "Ray"):
         """Merge two sets of rays into one."""
+        assert self.ray_dependencies.shape[1] == other.ray_dependencies.shape[1]
         return Ray(
+            np.concatenate((self.pixel_index, other.pixel_index)),
+            np.concatenate((self.ray_index, other.ray_index)),
+            np.vstack((self.ray_dependencies, other.ray_dependencies)),
             self.origin.append(other.origin),
             self.dir.append(other.dir),
             max(self.depth, other.depth),
@@ -163,7 +207,7 @@ class Hit:
         return self.N
 
 
-def get_raycolor(ray, scene):
+def get_raycolor(ray, scene, max_index=0):
     # Compute all collisions for each ray
     inters = [s.intersect(ray.origin, ray.dir) for s in scene.collider_list]
     distances, hit_orientation = zip(*inters)
@@ -171,23 +215,27 @@ def get_raycolor(ray, scene):
     # get the shortest distance collision
     nearest = reduce(np.minimum, distances)
 
-    # Since we are keeping track of the rays on the way down too, need to update hit check array.
-    expanded_hit_check = []
     ray_out = Ray(
-        ray.origin, ray.dir, ray.depth, ray.n,
-        ray.p_z, ray.p_z_ref, ray.color,
-        ray.reflections, ray.transmissions, ray.diffuse_reflections
+        ray.pixel_index,
+        ray.ray_index,
+        ray.ray_dependencies,
+        ray.origin,
+        ray.dir,
+        ray.depth,
+        ray.n,
+        ray.p_z,
+        ray.p_z_ref,
+        ray.color,
+        ray.reflections,
+        ray.transmissions,
+        ray.diffuse_reflections,
     )
-
-    def expand_hit_check(base, expansion):
-        return np.concatenate((
-            base,
-            [base[round(pos)] for pos in expansion]
-        ))
+    # Initialise if necessary
+    if max_index == 0:
+        max_index = max(ray_out.ray_index)
 
     for (coll, dis, orient) in zip(scene.collider_list, distances, hit_orientation):
-        base_hit_check = (nearest != FARAWAY) & (dis == nearest)
-        hit_check = expand_hit_check(base_hit_check, expanded_hit_check)
+        hit_check = (nearest != FARAWAY) & (dis == nearest)
 
         # If this is the nearest for any ray, bounce that ray.
         if np.any(hit_check):
@@ -200,34 +248,31 @@ def get_raycolor(ray, scene):
                 coll.assigned_primitive,
             )
 
-            sub_rays, copy_order = material.get_color(scene, ray.extract(hit_check), hit_info)
+            sub_rays = material.get_color(scene, ray.extract(hit_check), hit_info, max_index)
 
             # Recombine the rays into the current one.
-            # We only really care about the color, probabilities and values for hit_check on our way back up.
-            # Update the ray colors
-            temp_col = sub_rays.color.place(hit_check)
-            ray_out.color += temp_col
+            # First place the original rays into the main ray
+            original_rays = np.extract(hit_check, ray.ray_index)
+            original_mask = np.isin(sub_rays.ray_index, original_rays)
+            n_extra_rays = ray_out.length - ray.length
+            if n_extra_rays > 0:
+                full_hit_check = np.concatenate((hit_check, np.full(n_extra_rays, False)))
+            else:
+                full_hit_check = hit_check
 
-            # First rewrite the rays we investigated initially.
-            np.place(ray_out.p_z, hit_check, sub_rays.p_z)
-            np.place(ray_out.p_z_ref, hit_check, sub_rays.p_z_ref)
+            ray_out.place(
+                full_hit_check,
+                sub_rays.extract(original_mask),
+            )
+            # Then add the rest to the end
+            ray_out = ray_out.combine(
+                sub_rays.extract(np.logical_not(original_mask))
+            )
 
-            # The duplicated rays share properties with their parents
-            # Keep a list of references for each new ray.
-            # Then, if we added extra rays combine these with the current ray.
-            n_expected_rays = round(np.sum(hit_check))
-            n_sub_rays = sub_rays.p_z.shape[0]
-            n_added_rays = n_sub_rays - n_expected_rays
+            # update max index if necessary
+            max_index = max(max_index, max(sub_rays.ray_index))
 
-            if n_added_rays > 0:
-                expanded_hit_check = np.concatenate((
-                    expanded_hit_check,
-                    # Integrate the previous copy order into the full ray order.
-                    np.array([np.nonzero(hit_check)[0][round(pos)] for pos in copy_order])
-                ))
-                ray_out = ray_out.combine(sub_rays.extract([i >= n_expected_rays for i in range(n_sub_rays)]))
-
-    return ray_out, expanded_hit_check
+    return ray_out, max_index
 
 
 def get_distances(

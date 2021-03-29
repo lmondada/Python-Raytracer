@@ -138,8 +138,9 @@ class vec3:
         except TypeError:
             return shape
 
-    def __getitem__(self, ind):
-        return vec3(self.x[ind], self.y[ind], self.z[ind])
+    # todo: do we need this?
+    # def __getitem__(self, ind):
+    #     return vec3(self.x[ind], self.y[ind], self.z[ind])
 
     def broadcast_to(self, shape):
         return vec3(
@@ -166,7 +167,9 @@ class vec3:
         return (self.x, self.y, self.z)
 
     def extract(self, cond):
-        return vec3(extract(cond, self.x), extract(cond, self.y), extract(cond, self.z))
+        return vec3(extract(cond, self.x),
+                    extract(cond, self.y),
+                    extract(cond, self.z))
 
     @staticmethod
     def where(cond, out_true, out_false):
@@ -200,6 +203,20 @@ class vec3:
         np.place(r.x, cond, self.x)
         np.place(r.y, cond, self.y)
         np.place(r.z, cond, self.z)
+        return r
+
+    def copy(self):
+        return vec3(
+            self.x,
+            self.y,
+            self.z,
+        )
+
+    def place_into(self, cond, vec):
+        r = self.copy()
+        np.place(r.x, cond, vec.x)
+        np.place(r.y, cond, vec.y)
+        np.place(r.z, cond, vec.z)
         return r
 
     def repeat(self, n):
@@ -238,9 +255,9 @@ class vec3:
         if isinstance(vs, Tuple) and len(vs) > 0:
             vs = tuple(map(ensure_is_list, vs))
             return vec3(
-                np.concatenate((self.x, *(v.x for v in vs))),
-                np.concatenate((self.y, *(v.y for v in vs))),
-                np.concatenate((self.z, *(v.z for v in vs)))
+                np.concatenate((self.x, *(v.x for v in vs if isinstance(v, vec3)))),
+                np.concatenate((self.y, *(v.y for v in vs if isinstance(v, vec3)))),
+                np.concatenate((self.z, *(v.z for v in vs if isinstance(v, vec3))))
             )
 
     def splice(self, i: int = None, j: int = None):
@@ -250,11 +267,40 @@ class vec3:
             self.z[i:j],
         )
 
+    def expand_by_index(self, indexing_order):
+        vec = self.splice(round(indexing_order[0]), round(indexing_order[0]) + 1)  # empty vec3
+        if len(indexing_order) > 1:
+            vec = vec.append(tuple([
+                self.splice(round(pos), round(pos) + 1) for pos in indexing_order[1:]
+            ]))
+        return vec
+
     def mean(self, axis):
         return vec3(
             np.mean(self.x, axis=axis),
             np.mean(self.y, axis=axis),
-            np.mean(self.z, axis=axis)
+            np.mean(self.z, axis=axis),
+        )
+
+    def sum(self, axis):
+        return vec3(
+            np.sum(self.x, axis=axis),
+            np.sum(self.y, axis=axis),
+            np.sum(self.z, axis=axis),
+        )
+
+    def max(self):
+        return vec3(
+            max(self.x),
+            max(self.y),
+            max(self.z),
+        )
+
+    def min(self):
+        return vec3(
+            min(self.x),
+            min(self.y),
+            min(self.z),
         )
 
     def __eq__(self, other):

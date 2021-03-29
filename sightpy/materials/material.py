@@ -39,6 +39,6 @@ class Material:
         self.normalmap = load_image("sightpy/normalmaps/" + normalmap)
         self.repeat = repeat
 
-    @abstractmethod
-    def get_color(self, scene, ray, hit):
+    @abstractmethod   
+    def get_color(self, scene, ray, hit, max_index):
         pass

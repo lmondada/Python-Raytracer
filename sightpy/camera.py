@@ -76,15 +76,18 @@ class Camera:
             + self.cameraFwd * self.focal_distance
             - ray_origin
         ).normalize()
+
+        n_rays = x.shape[0]
         return Ray(
-            origin=ray_origin,
-            dir=ray_dir,
-            depth=0,
-            n=n.repeat(x.shape[0]),
-            trans_probs=np.ones((x.shape[0])),
-            trans_probs_ref=np.ones((x.shape[0])),
-            color=rgb(0., 0., 0.).repeat(x.shape[0]),
+            pixel_index=np.array(range(n_rays)),
+            ray_index=np.array(range(n_rays)),
+            ray_dependencies=np.array(range(n_rays)).reshape((n_rays, 1)),
+            origin=ray_origin, dir=ray_dir,
+            depth=0, n=n.repeat(n_rays),
+            trans_probs=np.ones((n_rays)),
+            trans_probs_ref=np.ones((n_rays)),
+            color=rgb(0., 0., 0.).repeat(n_rays),
             reflections=0,
             transmissions=0,
-            diffuse_reflections=0,
+            diffuse_reflections=0
         )

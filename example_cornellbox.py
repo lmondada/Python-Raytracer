@@ -3,12 +3,8 @@ from sightpy import *
 
 def main():
     # Set Scene
-
     Sc = Scene(ambient_color=rgb(0.00, 0.00, 0.00))
-
-
     angle = -0
-
     Sc.add_Camera(
         screen_width=100,
         screen_height=100,
@@ -18,16 +14,12 @@ def main():
         field_of_view=40,
     )
 
-
     # define materials to use
-
-    green_diffuse = Diffuse(diff_color=rgb(0.12, 0.45, 0.15))
-    red_diffuse = Diffuse(diff_color=rgb(0.65, 0.05, 0.05))
-    white_diffuse = Diffuse(diff_color=rgb(0.73, 0.73, 0.73))
-    emissive_white = Emissive(color=rgb(15.0, 15.0, 15.0))
-    emissive_blue = Emissive(color=rgb(2.0, 2.0, 3.5))
-    blue_glass = Refractive(n=vec3(1.5 + 0.05e-8j, 1.5 + 0.02e-8j, 1.5 + 0.0j))
-
+    green_diffuse = Diffuse(diff_color=rgb(.33, .73, .43), diff_color_ref=rgb(.33, .73, .43))
+    red_diffuse = Diffuse(diff_color=rgb(.75, .25, .35), diff_color_ref=rgb(.75, .25, .35))
+    white_diffuse = Diffuse(diff_color=rgb(.73, .73, .73), diff_color_ref=rgb(.73, .73, .73))
+    emissive_white = Emissive(color=rgb(.9, .9, .9))
+    blue_glass = Refractive(n=vec3(1.5 + 0.05e-8j, 1.5 + 0.02e-8j, 1.5 + 0.j), purity=0.99, purity_ref=0.4)
 
     # this is the light
     Sc.add(
@@ -41,7 +33,6 @@ def main():
         ),
         importance_sampled=True,
     )
-
 
     Sc.add(
         Plane(
@@ -98,7 +89,6 @@ def main():
         )
     )
 
-
     cb = Cuboid(
         material=white_diffuse,
         center=vec3(182.5, 165, -285 - 160 / 2),
@@ -109,7 +99,6 @@ def main():
     )
     cb.rotate(θ=15, u=vec3(0, 1, 0))
     Sc.add(cb)
-
 
     Sc.add(
         Sphere(
@@ -122,13 +111,10 @@ def main():
         importance_sampled=True,
     )
     # Render
+    img, gold_bars = Sc.render(samples_per_pixel=48, progress_bar=True)
 
-    img, gold_bars = Sc.render(samples_per_pixel=100, progress_bar=True)
-    # you are going to need more than 10 samples to remove the noise. At least 1000 for a nice image.
-
-    img.save("cornell_box.png")
-
-    img.show()
+    img.save("cornell_box_1.png")
+    # img.show()
 
 if __name__ == "__main__":
     main()

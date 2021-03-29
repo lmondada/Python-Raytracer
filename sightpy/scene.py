@@ -73,33 +73,34 @@ class Scene:
         print("Rendering...")
 
         t0 = time.time()
-        color_RGBlinear = rgb(0.0, 0.0, 0.0)
-
         all_rays = [self.camera.get_ray(self.n) for i in range(samples_per_pixel)]
+        color_RGBlinear = rgb(0.0, 0.0, 0.0).repeat(all_rays[0].length)
 
-        n_proc = cpu_count()
-        rays_per_batch = len(self.camera.get_ray(self.n))
-        batch_size = batch_size or np.ceil(samples_per_pixel / n_proc).astype(int)
+        # n_proc = cpu_count()
+        # rays_per_batch = len(self.camera.get_ray(self.n))
+        # batch_size = batch_size or np.ceil(samples_per_pixel / n_proc).astype(int)
+        #
+        # all_rays_batched = batch_rays(all_rays, batch_size)
+        # args = [(batch, copy.deepcopy(self)) for batch in all_rays_batched]
 
-        all_rays_batched = batch_rays(all_rays, batch_size)
-        args = [(batch, copy.deepcopy(self)) for batch in all_rays_batched]
-        # all_rays = [
-        #     (self.camera.get_ray(self.n), copy.deepcopy(self))
-        #     for i in range(samples_per_pixel)
-        # ]
-
-        def compute_cols(ray, copy_order, mining):
+        def compute_cols(ray, mining):
             # Aggregate the colours per pixel
-            n_pixels = ray.p_z.shape[0] - np.array(copy_order).shape[0]
-            full_copy_order = np.concatenate((
-                np.array(range(n_pixels)),
-                copy_order
-            ))
             av_col_per_pixel = [
-                ray.color.extract(full_copy_order == i).mean(axis=0)
-                for i in range(n_pixels)
+                ray.color.extract(ray.pixel_index == i).mean(axis=0)
+                for i in range(min(ray.pixel_index), max(ray.pixel_index) + 1)
+            ]
+            sum_col_per_pixel = [
+                ray.color.extract(ray.pixel_index == i).sum(axis=0)
+                for i in range(min(ray.pixel_index), max(ray.pixel_index) + 1)
             ]
             combined_cols = av_col_per_pixel[0].append(tuple(av_col_per_pixel[1:]))
+            # combined_cols = sum_col_per_pixel[0].append(tuple(sum_col_per_pixel[1:]))
+            # # rescale colors
+            # max_val = max(combined_cols.max().to_array())
+            # print("max col value is ", max_val)
+            # if max_val > 1:
+            #     combined_cols = combined_cols / max_val
+            # combined_cols.clip(0.0, 1.0)
 
             # Aggregate the mining statistics
             mining["col_probs"] = np.concatenate((mining["col_probs"], ray.p_z))
@@ -167,25 +168,36 @@ class Scene:
                 print("progressbar module is required. \nRun: pip install progressbar")
 
             bar = progressbar.ProgressBar(maxval=samples_per_pixel)
+            bar.start()
+            for i in range(samples_per_pixel):
+                rays, _ = get_raycolor(all_rays[i], self)
+                color, mined_dust = compute_cols(rays, mined_dust)
+                color_RGBlinear += color
+                bar.update(i)
+            bar.finish()
 
-            with Pool(processes=n_proc) as pool:
-                bar.start()
-                for i, (ray, copy_order) in enumerate(
-                        pool.imap_unordered(get_raycolor_tuple, args)
-                ):
-                    for batch in range(batch_size):
-                        beg, end = batch * rays_per_batch, (batch + 1) * rays_per_batch
-                        color, mined_dust = compute_cols(ray[beg:end], copy_order, mined_dust)
-                        color_RGBlinear += color[beg:end]
-                    bar.update(i)
-                bar.finish()
+            # with Pool(processes=n_proc) as pool:
+            #     bar.start()
+            #     all_rays = None
+            #     for i, (ray, _) in enumerate(
+            #             pool.imap_unordered(get_raycolor_tuple, args)
+            #     ):
+            #         # Final color for each pixel will be an average of all the samples collected for the pixel.
+            #         if all_rays is None:
+            #             all_rays = ray
+            #         else:
+            #             all_rays = all_rays.combine(ray)
+            #         bar.update(i)
+            #
+            #     color_RGBlinear, mined_dust = compute_cols(all_rays, mined_dust)
+            #     bar.finish()
 
         else:
             with Pool(processes=n_proc) as pool:
-                for i, (ray, copy_order) in enumerate(
+                for i, (ray, _) in enumerate(
                     pool.imap_unordered(get_raycolor_tuple, args)
                 ):
-                    color, mined_dust = compute_cols(ray, copy_order, mined_dust)
+                    color, mined_dust = compute_cols(ray, mined_dust)
                     for batch in range(batch_size):
                         beg, end = batch * rays_per_batch, (batch + 1) * rays_per_batch
                         color_RGBlinear += color[beg:end]

@@ -18,8 +18,8 @@ class Emissive(Material):
 
         super().__init__(**kwargs)
 
-    def get_color(self, scene, ray, hit):
+    def get_color(self, scene, ray, hit, max_index):
         n_rays = ray.p_z.shape[0]
         diff_color = self.texture_color.get_color(hit).repeat(n_rays)
         ray.color = diff_color
-        return ray, np.array([])
+        return ray

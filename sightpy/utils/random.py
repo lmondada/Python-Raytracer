@@ -10,7 +10,6 @@ def random_in_unit_disk(shape):
 
 
 def random_in_unit_sphere(shape):
-
     # https://mathworld.wolfram.com/SpherePointPicking.html
     phi = np.random.rand(shape) * 2 * np.pi
     u = 2.0 * np.random.rand(shape) - 1.0
@@ -55,8 +54,11 @@ class cosine_pdf(PDF):
         self.normal = normal
 
     def value(self, ray_dir):
-        return np.clip(ray_dir.dot(self.normal), 0.0, 1.0) / np.pi
-
+        val =  np.clip(ray_dir.dot(self.normal), 0.0, 1.0) / np.pi
+        assert max(val) <= 1
+        assert min(val) >= 0
+        return val
+    
     def generate(self):
         ax_w = self.normal
         a = vec3.where(np.abs(ax_w.x) > 0.9, vec3(0, 1, 0), vec3(1, 0, 0))
@@ -87,10 +89,13 @@ class spherical_caps_pdf(PDF):
         for i in range(self.l):
             PDF_value += np.where(
                 ray_dir.dot(self.ax_w_list[i]) > self.cosθmax_list[i],
-                1 / ((1 - self.cosθmax_list[i]) * 2 * np.pi),
+                # todo: this was not a probability - has been changed!!
+                np.clip((1 - self.cosθmax_list[i]) * 2 * np.pi, 0, 1),
                 0.0,
             )
         PDF_value = PDF_value / self.l
+        assert max(PDF_value) <= 1
+        assert min(PDF_value) >= 0
         return PDF_value
 
     def generate(self):
@@ -108,7 +113,6 @@ class spherical_caps_pdf(PDF):
         ax_w_list = [None] * l
 
         for i in range(l):
-
             ax_w_list[i] = (importance_sampled_list[i].center - origin).normalize()
             a = vec3.where(np.abs(ax_w_list[i].x) > 0.9, vec3(0, 1, 0), vec3(1, 0, 0))
             ax_v_list[i] = ax_w_list[i].cross(a).normalize()
@@ -161,17 +165,48 @@ class mixed_pdf(PDF):
         self.pdf1 = pdf1
         self.pdf2 = pdf2
 
-    def value(self, ray_dir):
-        return (
-            self.pdf1.value(ray_dir) * self.pdf1_weight
-            + self.pdf2.value(ray_dir) * self.pdf2_weight
-        )
+    def value(self,ray_dir):
+        val =  self.pdf1.value(ray_dir) * self.pdf1_weight  + self.pdf2.value(ray_dir) * self.pdf2_weight
+        assert max(val) <= 1
+        assert min(val) >= 0
+        return val
 
     def generate(self):
         mask = np.random.rand(self.shape)
         return vec3.where(
             mask < self.pdf1_weight, self.pdf1.generate(), self.pdf2.generate()
         )
+
+
+class normal_pdf(PDF):
+    """Normal distribution"""
+    def __init__(self, mu: vec3, sigma=1):
+        self.mu = mu  # mean/centre
+        self.sigma = sigma  # standard deviation
+        self.shape = mu.shape()
+
+    def value(self, x: vec3) -> np.array:
+        """Evaluate the normal at the given point."""
+        # A = (2 * pi * sigma^2)^-0.5
+        # B = -0.5 * (x - mu / sigma)^2
+        # y = A * exp(B)
+
+        a = 2 * np.pi * (self.sigma ** 2)
+        A = a ** -0.5
+        b = (x - self.mu) / self.sigma
+        B = -0.5 * (b ** 2)
+        y = A * vec3.exp(B)
+        val = y.x * y.y * y.z
+        # assert max(val) <= 1
+        # assert min(val) >= -0
+        return val
+
+    def generate(self) -> vec3:
+        return vec3(
+            x=np.random.normal(self.mu.x, self.sigma, self.shape),
+            y=np.random.normal(self.mu.y, self.sigma, self.shape),
+            z=np.random.normal(self.mu.z, self.sigma, self.shape),
+        ).normalize()
 
 
 def random_in_unit_spherical_caps(shape, origin, importance_sampled_list):
