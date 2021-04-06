@@ -9,29 +9,42 @@ class Ray:
     Note that we can encode a series of individual rays within this class."""
 
     def __init__(
-            self, pixel_index, ray_index, ray_dependencies,
-            origin, dir, depth, n, trans_probs, trans_probs_ref, color,
-            reflections, transmissions, diffuse_reflections
-        ):
+        self,
+        pixel_index,
+        ray_index,
+        ray_dependencies,
+        origin,
+        dir,
+        depth,
+        n,
+        log_trans_probs,
+        log_trans_probs_ref,
+        color,
+        reflections,
+        transmissions,
+        diffuse_reflections,
+    ):
         self.length = max(len(origin), len(dir), len(n))
         shape = [self.length]
 
         self.pixel_index = pixel_index  # keep track of which pixel this ray belongs to.
         self.ray_index = ray_index  # Each ray has a unique index
-        self.ray_dependencies = ray_dependencies  # keep track of inter-ray dependencies.
+        self.ray_dependencies = (
+            ray_dependencies  # keep track of inter-ray dependencies.
+        )
 
         self.origin = origin  # the point where the ray comes from
-        self.dir = dir        # direction of the ray
-        self.depth = depth    # ray_depth is the number of the reflections + transmissions/refractions,
+        self.dir = dir  # direction of the ray
+        self.depth = depth  # ray_depth is the number of the reflections + transmissions/refractions,
         #                     # starting at zero for camera rays
         self.n = n.broadcast_to(
             shape
-        )                     # ray_n is the index of refraction of the media in which the ray is travelling
+        )  # ray_n is the index of refraction of the media in which the ray is travelling
 
         # Record the probability of each ray's trajectory.
         # This will be zero if it never hits a light source.
-        self.p_z = trans_probs
-        self.p_z_ref = trans_probs_ref
+        self.log_p_z = log_trans_probs
+        self.log_p_z_ref = log_trans_probs_ref
         # keep track of the color of each sub ray.
         self.color = color
 
@@ -48,7 +61,9 @@ class Ray:
         self.reflections = reflections  # reflections is the number of the refrections, starting at zero for camera rays
         self.transmissions = transmissions  # transmissions is the number of the transmissions/refractions,
         #                                   # starting at zero for camera rays
-        self.diffuse_reflections = diffuse_reflections  # reflections is the number of the refrections,
+        self.diffuse_reflections = (
+            diffuse_reflections  # reflections is the number of the refrections,
+        )
         #                                               # starting at zero for camera rays
 
     def extract(self, hit_check):
@@ -64,8 +79,8 @@ class Ray:
             self.dir.extract(hit_check),
             self.depth,
             self.n.extract(hit_check),
-            np.extract(hit_check, self.p_z),
-            np.extract(hit_check, self.p_z_ref),
+            np.extract(hit_check, self.log_p_z),
+            np.extract(hit_check, self.log_p_z_ref),
             self.color.extract(hit_check),
             self.reflections,
             self.transmissions,
@@ -80,13 +95,13 @@ class Ray:
             self.pixel_index[ind],
             self.ray_index[ind],
             self.ray_dependencies[ind],
-            self.origin[ind],
-            self.dir[ind],
+            self.origin.get_subvec(ind),
+            self.dir.get_subvec(ind),
             self.depth,
-            self.n[ind],
-            self.p_z[ind],
-            self.p_z_ref[ind],
-            self.color[ind],
+            self.n.get_subvec(ind),
+            self.log_p_z[ind],
+            self.log_p_z_ref[ind],
+            self.color.get_subvec(ind),
             self.reflections,
             self.transmissions,
             self.diffuse_reflections,
@@ -104,8 +119,8 @@ class Ray:
             vec3.where(cond, x.dir, y.dir),
             x.depth,
             vec3.where(cond, x.n, y.n),
-            np.where(cond, x.p_z, y.p_z),
-            np.where(cond, x.p_z_ref, y.p_z_ref),
+            np.where(cond, x.log_p_z, y.log_p_z),
+            np.where(cond, x.log_p_z_ref, y.log_p_z_ref),
             vec3.where(cond, x.color, y.color),
             max(x.reflections, y.reflections),
             max(x.transmissions, y.transmissions),
@@ -121,8 +136,8 @@ class Ray:
         dir = [r.dir for r in rays]
         depth = rays[0].depth
         n = [r.n for r in rays]
-        p_z = [r.p_z for r in rays]
-        p_z_ref = [r.p_z_ref for r in rays]
+        log_p_z = [r.log_p_z for r in rays]
+        log_p_z_ref = [r.log_p_z_ref for r in rays]
         color = [r.color for r in rays]
         reflections = max(r.reflections for r in rays)
         transmissions = max(r.transmissions for r in rays)
@@ -138,8 +153,8 @@ class Ray:
             vec3.concatenate(dir),
             depth,
             vec3.concatenate(n),
-            np.concatenate(p_z),
-            np.concatenate(p_z_ref),
+            np.concatenate(log_p_z),
+            np.concatenate(log_p_z_ref),
             vec3.concatenate(color),
             reflections,
             transmissions,
@@ -159,8 +174,8 @@ class Ray:
         np.place(self.pixel_index, mask, other.pixel_index)
         np.place(self.ray_index, mask, other.ray_index)
         np.place(self.ray_dependencies, mask_dep, other.ray_dependencies.reshape(-1))
-        np.place(self.p_z, mask, other.p_z)
-        np.place(self.p_z_ref, mask, other.p_z_ref)
+        np.place(self.log_p_z, mask, other.log_p_z)
+        np.place(self.log_p_z_ref, mask, other.log_p_z_ref)
 
     def combine(self, other: "Ray"):
         """Merge two sets of rays into one."""
@@ -173,12 +188,12 @@ class Ray:
             self.dir.append(other.dir),
             max(self.depth, other.depth),
             self.n.append(other.n),
-            np.concatenate((self.p_z, other.p_z)),
-            np.concatenate((self.p_z_ref, other.p_z_ref)),
+            np.concatenate((self.log_p_z, other.log_p_z)),
+            np.concatenate((self.log_p_z_ref, other.log_p_z_ref)),
             self.color.append(other.color),
             max(self.reflections, other.reflections),
             max(self.transmissions, other.transmissions),
-            max(self.diffuse_reflections, other.diffuse_reflections)
+            max(self.diffuse_reflections, other.diffuse_reflections),
         )
 
 
@@ -223,8 +238,8 @@ def get_raycolor(ray, scene, max_index=0):
         ray.dir,
         ray.depth,
         ray.n,
-        ray.p_z,
-        ray.p_z_ref,
+        ray.log_p_z,
+        ray.log_p_z_ref,
         ray.color,
         ray.reflections,
         ray.transmissions,
@@ -248,7 +263,9 @@ def get_raycolor(ray, scene, max_index=0):
                 coll.assigned_primitive,
             )
 
-            sub_rays = material.get_color(scene, ray.extract(hit_check), hit_info, max_index)
+            sub_rays = material.get_color(
+                scene, ray.extract(hit_check), hit_info, max_index
+            )
 
             # Recombine the rays into the current one.
             # First place the original rays into the main ray
@@ -256,18 +273,17 @@ def get_raycolor(ray, scene, max_index=0):
             original_mask = np.isin(sub_rays.ray_index, original_rays)
             n_extra_rays = ray_out.length - ray.length
             if n_extra_rays > 0:
-                full_hit_check = np.concatenate((hit_check, np.full(n_extra_rays, False)))
+                full_hit_check = np.concatenate(
+                    (hit_check, np.full(n_extra_rays, False))
+                )
             else:
                 full_hit_check = hit_check
 
             ray_out.place(
-                full_hit_check,
-                sub_rays.extract(original_mask),
+                full_hit_check, sub_rays.extract(original_mask),
             )
             # Then add the rest to the end
-            ray_out = ray_out.combine(
-                sub_rays.extract(np.logical_not(original_mask))
-            )
+            ray_out = ray_out.combine(sub_rays.extract(np.logical_not(original_mask)))
 
             # update max index if necessary
             max_index = max(max_index, max(sub_rays.ray_index))

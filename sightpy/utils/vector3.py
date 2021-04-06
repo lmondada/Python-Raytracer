@@ -2,6 +2,7 @@ import numpy as np
 import numbers
 from typing import Tuple
 
+
 def extract(cond, x):
     if isinstance(x, numbers.Number):
         return x
@@ -142,6 +143,12 @@ class vec3:
     # def __getitem__(self, ind):
     #     return vec3(self.x[ind], self.y[ind], self.z[ind])
 
+    def get_subvec(self, ind, ind_to=None):
+        if ind_to is None:
+            return vec3(self.x[ind], self.y[ind], self.z[ind])
+        else:
+            return vec3(self.x[ind:ind_to], self.y[ind:ind_to], self.z[ind:ind_to])
+
     def broadcast_to(self, shape):
         return vec3(
             np.broadcast_to(self.x, shape),
@@ -167,9 +174,7 @@ class vec3:
         return (self.x, self.y, self.z)
 
     def extract(self, cond):
-        return vec3(extract(cond, self.x),
-                    extract(cond, self.y),
-                    extract(cond, self.z))
+        return vec3(extract(cond, self.x), extract(cond, self.y), extract(cond, self.z))
 
     @staticmethod
     def where(cond, out_true, out_false):
@@ -206,11 +211,7 @@ class vec3:
         return r
 
     def copy(self):
-        return vec3(
-            self.x,
-            self.y,
-            self.z,
-        )
+        return vec3(self.x, self.y, self.z,)
 
     def place_into(self, cond, vec):
         r = self.copy()
@@ -250,29 +251,32 @@ class vec3:
             return vec3(
                 np.concatenate((self.x, vs.x)),
                 np.concatenate((self.y, vs.y)),
-                np.concatenate((self.z, vs.z))
+                np.concatenate((self.z, vs.z)),
             )
         if isinstance(vs, Tuple) and len(vs) > 0:
             vs = tuple(map(ensure_is_list, vs))
             return vec3(
                 np.concatenate((self.x, *(v.x for v in vs if isinstance(v, vec3)))),
                 np.concatenate((self.y, *(v.y for v in vs if isinstance(v, vec3)))),
-                np.concatenate((self.z, *(v.z for v in vs if isinstance(v, vec3))))
+                np.concatenate((self.z, *(v.z for v in vs if isinstance(v, vec3)))),
             )
 
     def splice(self, i: int = None, j: int = None):
-        return vec3(
-            self.x[i:j],
-            self.y[i:j],
-            self.z[i:j],
-        )
+        return vec3(self.x[i:j], self.y[i:j], self.z[i:j],)
 
     def expand_by_index(self, indexing_order):
-        vec = self.splice(round(indexing_order[0]), round(indexing_order[0]) + 1)  # empty vec3
+        vec = self.splice(
+            round(indexing_order[0]), round(indexing_order[0]) + 1
+        )  # empty vec3
         if len(indexing_order) > 1:
-            vec = vec.append(tuple([
-                self.splice(round(pos), round(pos) + 1) for pos in indexing_order[1:]
-            ]))
+            vec = vec.append(
+                tuple(
+                    [
+                        self.splice(round(pos), round(pos) + 1)
+                        for pos in indexing_order[1:]
+                    ]
+                )
+            )
         return vec
 
     def mean(self, axis):
@@ -290,21 +294,17 @@ class vec3:
         )
 
     def max(self):
-        return vec3(
-            max(self.x),
-            max(self.y),
-            max(self.z),
-        )
+        return vec3(max(self.x), max(self.y), max(self.z),)
 
     def min(self):
-        return vec3(
-            min(self.x),
-            min(self.y),
-            min(self.z),
-        )
+        return vec3(min(self.x), min(self.y), min(self.z),)
 
     def __eq__(self, other):
         return (self.x == other.x) & (self.y == other.y) & (self.z == other.z)
+
+    def __lt__(self, scalar):
+        """ less than is here defined for vec3 < y, y is a scalar """
+        return (self.x < scalar) & (self.y < scalar) & (self.z < scalar)
 
 
 def array_to_vec3(array):

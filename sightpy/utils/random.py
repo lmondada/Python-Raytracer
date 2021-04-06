@@ -58,11 +58,11 @@ class cosine_pdf(PDF):
         self.normal = normal
 
     def value(self, ray_dir):
-        val =  np.clip(ray_dir.dot(self.normal), 0.0, 1.0) / np.pi
+        val = np.clip(ray_dir.dot(self.normal), 0.0, 1.0) / np.pi
         assert max(val) <= 1
         assert min(val) >= 0
         return val
-    
+
     def generate(self):
         ax_w = self.normal
         a = vec3.where(np.abs(ax_w.x) > 0.9, vec3(0, 1, 0), vec3(1, 0, 0))
@@ -169,8 +169,11 @@ class mixed_pdf(PDF):
         self.pdf1 = pdf1
         self.pdf2 = pdf2
 
-    def value(self,ray_dir):
-        val =  self.pdf1.value(ray_dir) * self.pdf1_weight  + self.pdf2.value(ray_dir) * self.pdf2_weight
+    def value(self, ray_dir):
+        val = (
+            self.pdf1.value(ray_dir) * self.pdf1_weight
+            + self.pdf2.value(ray_dir) * self.pdf2_weight
+        )
         assert max(val) <= 1
         assert min(val) >= 0
         return val
@@ -184,6 +187,7 @@ class mixed_pdf(PDF):
 
 class normal_pdf(PDF):
     """Normal distribution"""
+
     def __init__(self, mu: vec3, sigma=1):
         self.mu = mu  # mean/centre
         self.sigma = sigma  # standard deviation
@@ -191,13 +195,23 @@ class normal_pdf(PDF):
 
     def value(self, x: vec3) -> np.array:
         """Evaluate the normal at the given point."""
-        epsilon = 0.00001
-        val_x = norm.cdf(x.x + epsilon, self.mu.x, self.sigma) - norm.cdf(x.x - epsilon, self.mu.x, self.sigma)
-        val_y = norm.cdf(x.y + epsilon, self.mu.y, self.sigma) - norm.cdf(x.y - epsilon, self.mu.y, self.sigma)
-        val_z = norm.cdf(x.z + epsilon, self.mu.z, self.sigma) - norm.cdf(x.z - epsilon, self.mu.z, self.sigma)
+        epsilon = 1e-5
+        val_x = norm.pdf(x.x, self.mu.x, self.sigma) * epsilon
+        val_y = norm.pdf(x.y, self.mu.y, self.sigma) * epsilon
+        val_z = norm.pdf(x.z, self.mu.z, self.sigma) * epsilon
         val = val_x * val_y * val_z
         assert max(val) <= 1
         assert min(val) >= 0
+        return val
+
+    def log_value(self, x: vec3) -> np.array:
+        """Evaluate the log normal at the given point."""
+        epsilon = 1e-5
+        val_x = norm.logpdf(x.x, self.mu.x, self.sigma) + np.log(epsilon)
+        val_y = norm.logpdf(x.y, self.mu.y, self.sigma) + np.log(epsilon)
+        val_z = norm.logpdf(x.z, self.mu.z, self.sigma) + np.log(epsilon)
+        val = val_x + val_y + val_z
+        assert max(val) <= 0
         return val
 
     def generate(self) -> vec3:

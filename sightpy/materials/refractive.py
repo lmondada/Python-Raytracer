@@ -9,14 +9,23 @@ from . import Material
 
 
 class Refractive(Material):
-    def __init__(self, n, n_ref=vec3(1.5 + 0.j, 1.5 + 0.j, 1.5 + 0.j), purity=0.9, purity_ref=0.5, **kwargs):
+    def __init__(
+        self,
+        n,
+        n_ref=vec3(1.5 + 0.0j, 1.5 + 0.0j, 1.5 + 0.0j),
+        purity=0.9,
+        purity_ref=0.5,
+        **kwargs
+    ):
         super().__init__(**kwargs)
 
         self.n = n  # index of refraction
         self.n_ref = n_ref
 
         self.purity = purity  # purity of material. 1 is completely pure, 0 is complete randomness.
-        self.purity_ref = purity_ref  # The greater the purity, the narrower the distribution
+        self.purity_ref = (
+            purity_ref  # The greater the purity, the narrower the distribution
+        )
         #                               used to calculate the direction of the refracted ray.
 
         # Instead of defining a index of refraction (n) for each wavelenght (computationally expensive)
@@ -48,12 +57,13 @@ class Refractive(Material):
             if hit_orientation== UPDOWN:
                #ray get out of the material   
             """
+
             def get_fresnel(n2):
                 # compute complete fresnel term
-                cosθt = vec3.sqrt(1. - (n1 / n2) ** 2 * (1. - cosθi ** 2))
+                cosθt = vec3.sqrt(1.0 - (n1 / n2) ** 2 * (1.0 - cosθi ** 2))
                 r_per = (n1 * cosθi - n2 * cosθt) / (n1 * cosθi + n2 * cosθt)
-                r_par = -1. * (n1 * cosθt - n2 * cosθi) / (n1 * cosθt + n2 * cosθi)
-                F = (r_per.abs() ** 2 + r_par.abs() ** 2) / 2.
+                r_par = -1.0 * (n1 * cosθt - n2 * cosθi) / (n1 * cosθt + n2 * cosθi)
+                F = (r_per.abs() ** 2 + r_par.abs() ** 2) / 2.0
                 return F
 
             cosθi = V.dot(N)
@@ -63,23 +73,44 @@ class Refractive(Material):
             F, F_ref = get_fresnel(n2), get_fresnel(n2_ref)
 
             # compute reflection
-            reflected_ray_dir = (ray.dir - N * 2. * ray.dir.dot(N)).normalize()
+            reflected_ray_dir = (ray.dir - N * 2.0 * ray.dir.dot(N)).normalize()
             reflected_ray_deps = ray.ray_index.reshape((ray.length, 1))
+
+            # Compute ray directions and probabilities
+            pdf = normal_pdf(reflected_ray_dir, 1 - self.purity)
+            pdf_ref = normal_pdf(reflected_ray_dir, 1 - self.purity_ref)
+
+            sampled_ray_dir = pdf.generate()
+            log_PDF_val = pdf.log_value(sampled_ray_dir)
+            log_PDF_val_ref = pdf_ref.log_value(sampled_ray_dir)
+
+            np.seterr(divide="ignore")  # ignore log(0) computations
+            new_log_p_z = ray.log_p_z + log_PDF_val + np.log(F.x)
+            new_log_p_z_ref = ray.log_p_z_ref + log_PDF_val_ref + np.log(F_ref.x)
+            np.seterr(divide="warn")  # unset warning ignore
+
+            assert np.all((ray.log_p_z + np.log(F.x) < 1e-7) | (ray.log_p_z == 1.0))
+            assert np.all(
+                (ray.log_p_z_ref + np.log(F_ref.x) < 1e-7) | (ray.log_p_z == 1.0)
+            )
+
             ray_reflect, max_index = get_raycolor(
                 Ray(
-                    ray.pixel_index,
-                    ray.ray_index,
-                    np.hstack((ray.ray_dependencies, reflected_ray_deps)),
-                    nudged,
-                    reflected_ray_dir,
-                    ray.depth + 1,
-                    ray.n,
-                    ray.p_z * F.x,
-                    ray.p_z_ref * F_ref.x,
-                    ray.color,
-                    ray.reflections + 1,
-                    ray.transmissions,
-                    ray.diffuse_reflections
+                    pixel_index=ray.pixel_index,
+                    ray_index=ray.ray_index,
+                    ray_dependencies=np.hstack(
+                        (ray.ray_dependencies, reflected_ray_deps)
+                    ),
+                    origin=nudged,
+                    dir=sampled_ray_dir,
+                    depth=ray.depth + 1,
+                    n=ray.n,
+                    log_trans_probs=new_log_p_z,
+                    log_trans_probs_ref=new_log_p_z_ref,
+                    color=ray.color,
+                    reflections=ray.reflections + 1,
+                    transmissions=ray.transmissions,
+                    diffuse_reflections=ray.diffuse_reflections,
                 ),
                 scene,
                 max_index,
@@ -87,7 +118,9 @@ class Refractive(Material):
 
             # Update F to account for any extra rays picked up
             reflect_deps = ray_reflect.ray_dependencies[:, -1]
-            ray_reflect.ray_dependencies = np.delete(ray_reflect.ray_dependencies, -1, axis=1)
+            ray_reflect.ray_dependencies = np.delete(
+                ray_reflect.ray_dependencies, -1, axis=1
+            )
 
             # want ray.index(pos) for pos in reflect_deps
             reflect_indexing_order = [
@@ -99,9 +132,15 @@ class Refractive(Material):
             F_reflect = F.expand_by_index(reflect_indexing_order)
             F_ref_reflect = F_ref.expand_by_index(reflect_indexing_order)
 
-            color_reflect = color.repeat(ray_reflect.color.shape()[0]) + ray_reflect.color * F_reflect
+            color_reflect = (
+                color.repeat(ray_reflect.color.shape()[0])
+                + ray_reflect.color * F_reflect
+            )
             # color_reflect = color.repeat(ray_reflect.color.shape()[0]) + ray_reflect.color
-            color_ref_reflect = color.repeat(ray_reflect.color.shape()[0]) + ray_reflect.color * F_ref_reflect
+            color_ref_reflect = (
+                color.repeat(ray_reflect.color.shape()[0])
+                + ray_reflect.color * F_ref_reflect
+            )
             # color_ref_reflect = color.repeat(ray_reflect.color.shape()[0]) + ray_reflect.color
 
             # compute refraction rays
@@ -110,32 +149,47 @@ class Refractive(Material):
             def get_non_tir(n2):
                 n1_div_n2 = vec3.real(n1) / vec3.real(n2)
                 n1_div_n2_aver = n1_div_n2.average()
-                sin2θt = (n1_div_n2_aver) ** 2 * (1. - cosθi ** 2)
+                sin2θt = (n1_div_n2_aver) ** 2 * (1.0 - cosθi ** 2)
 
                 new_ray_dir = (
-                        ray.dir * (n1_div_n2_aver) + N * (
-                        n1_div_n2_aver * cosθi - np.sqrt(1 - np.clip(sin2θt, 0, 1))
-                )
+                    ray.dir * (n1_div_n2_aver)
+                    + N * (n1_div_n2_aver * cosθi - np.sqrt(1 - np.clip(sin2θt, 0, 1)))
                 ).normalize()
-                return sin2θt <= 1., new_ray_dir
+                return sin2θt <= 1.0, new_ray_dir
 
             non_TiR, refracted_ray_dir = get_non_tir(n2)
             non_TiR_ref, refracted_ray_dir_ref = get_non_tir(n2_ref)
-            if np.any(non_TiR) or np.any(non_TiR_ref):  # avoid total internal reflection
-                nudged = hit.point - N * .000001  # nudged for refraction
-                T = 1. - F
-                T_ref = 1. - F_ref
+            if np.any(non_TiR) or np.any(
+                non_TiR_ref
+            ):  # avoid total internal reflection
+                nudged = hit.point - N * 0.000001  # nudged for refraction
+                T = 1.0 - F
+                T_ref = 1.0 - F_ref
+                # fix rounding issues
+                T.x[np.abs(T.x) < 1e-13] = 0.0
+                T_ref.x[np.abs(T_ref.x) < 1e-13] = 0.0
 
                 # Compute ray directions and probabilities
                 pdf = normal_pdf(refracted_ray_dir, 1 - self.purity)
                 pdf_ref = normal_pdf(refracted_ray_dir_ref, 1 - self.purity_ref)
 
                 sampled_ray_dir = pdf.generate()
-                PDF_val = pdf.value(sampled_ray_dir)
-                PDF_val_ref = pdf_ref.value(sampled_ray_dir)
+                log_PDF_val = pdf.log_value(sampled_ray_dir)
+                log_PDF_val_ref = pdf_ref.log_value(sampled_ray_dir)
+
+                np.seterr(divide="ignore")  # ignore log(0) computations
+                new_log_p_z = ray.log_p_z + log_PDF_val + np.log(T.x)
+                new_log_p_z_ref = ray.log_p_z_ref + log_PDF_val_ref + np.log(T_ref.x)
+                np.seterr(divide="warn")  # unset warning ignore
 
                 refracted_ray_indices = np.array(range(ray.length) + max_index + 1)
                 refracted_ray_deps = refracted_ray_indices.reshape((ray.length, 1))
+
+                assert np.all(ray.log_p_z != 1.0)
+                assert np.all(ray.log_p_z_ref != 1.0)
+                assert np.all((new_log_p_z < 1e-7) | (ray.log_p_z == 1.0))
+                assert np.all((new_log_p_z_ref < 1e-7) | (ray.log_p_z_ref == 1.0))
+
                 ray_refract, new_max_index = get_raycolor(
                     Ray(
                         ray.pixel_index,
@@ -145,8 +199,8 @@ class Refractive(Material):
                         sampled_ray_dir,
                         ray.depth + 1,
                         n2,
-                        ray.p_z * PDF_val * T.x,
-                        ray.p_z_ref * PDF_val_ref * T_ref.x,
+                        new_log_p_z,
+                        new_log_p_z_ref,
                         ray.color,
                         ray.reflections,
                         ray.transmissions + 1,
@@ -155,24 +209,43 @@ class Refractive(Material):
                     scene,
                     ray.length + max_index + 1,
                 )
+
+                assert np.all(
+                    (np.abs(ray_refract.log_p_z - ray_refract.log_p_z_ref) > 1e-7)
+                    | (ray_refract.log_p_z == 1.0)
+                    | (ray_refract.log_p_z == -np.inf)
+                )
+                assert not any(ray_reflect.log_p_z == -np.inf)
+                assert not any(ray_reflect.log_p_z_ref == -np.inf)
+
                 # update nonTiR with new copy order
                 refract_indexing_order = [
                     index
                     for pos in ray_refract.ray_dependencies[:, -1]
                     for index in np.where(range(ray.length) + max_index + 1 == pos)[0]
                 ]
-                ray_refract.ray_dependencies = np.delete(ray_refract.ray_dependencies, -1, axis=1)
+                ray_refract.ray_dependencies = np.delete(
+                    ray_refract.ray_dependencies, -1, axis=1
+                )
 
-                non_TiR = np.array([non_TiR[round(pos)] for pos in refract_indexing_order])
-                non_TiR_ref = np.array([non_TiR_ref[round(pos)] for pos in refract_indexing_order])
+                non_TiR = np.array(
+                    [non_TiR[round(pos)] for pos in refract_indexing_order]
+                )
+                non_TiR_ref = np.array(
+                    [non_TiR_ref[round(pos)] for pos in refract_indexing_order]
+                )
                 T = T.expand_by_index(refract_indexing_order)
                 T_ref = T_ref.expand_by_index(refract_indexing_order)
 
                 refracted_color = ray_refract.color * T.extract(non_TiR)
                 refracted_color_ref = ray_refract.color * T_ref.extract(non_TiR_ref)
 
-                color_refract = color.repeat(ray_refract.color.shape()[0]) + refracted_color.place(non_TiR)
-                color_ref_refract = color.repeat(ray_refract.color.shape()[0]) + refracted_color_ref.place(non_TiR_ref)
+                color_refract = color.repeat(
+                    ray_refract.color.shape()[0]
+                ) + refracted_color.place(non_TiR)
+                color_ref_refract = color.repeat(
+                    ray_refract.color.shape()[0]
+                ) + refracted_color_ref.place(non_TiR_ref)
 
                 # Record reflected and refracted ray colors separately
                 color = color_reflect.append(color_refract)
@@ -188,9 +261,9 @@ class Refractive(Material):
             # absorption:
             # approximation using wavelength for red = 630 nm, green 550 nm, blue 475 nm
             full_indexing_order = reflect_indexing_order + refract_indexing_order
-            hit_distance_repeated = np.array([
-                hit.distance[round(pos)] for pos in full_indexing_order
-            ])
+            hit_distance_repeated = np.array(
+                [hit.distance[round(pos)] for pos in full_indexing_order]
+            )
             ray_n_repeated = n1.expand_by_index(full_indexing_order)
 
             ambient_factor = vec3.exp(
@@ -206,13 +279,21 @@ class Refractive(Material):
             color_ref = color_ref * ambient_factor
 
             # Update ray color probabilities
-            color_match = ray_out.color == color_ref
-            ray_out.p_z_ref = ray_out.p_z_ref * color_match
+            color_match = (ray_out.color - color_ref).abs() < 1e-6
+
+            assert all(color_match)
+
+            assert np.all(
+                (np.abs(ray_out.log_p_z - ray_out.log_p_z_ref) > 1e-7)
+                | (ray_out.log_p_z == 1.0)
+                | (ray_out.log_p_z == -np.inf)
+            )
+
             return ray_out
 
-        else:  # Too deep and didn't hit a light source, return negative probabilities.
-            n_rays = ray.p_z.shape[0]
-            ray.p_z = np.full(n_rays, -1)
-            ray.p_z_ref = np.full(n_rays, -1)
+        else:  # Too deep and didn't hit a light source, return impossible logprob = 1
+            n_rays = ray.log_p_z.shape[0]
+            ray.log_p_z = np.full(n_rays, 1)
+            ray.log_p_z_ref = np.full(n_rays, 1)
             ray.color = color.repeat(n_rays)
             return ray

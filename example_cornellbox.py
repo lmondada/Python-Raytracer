@@ -15,11 +15,19 @@ def main():
     )
 
     # define materials to use
-    green_diffuse = Diffuse(diff_color=rgb(.33, .73, .43), diff_color_ref=rgb(.33, .73, .43))
-    red_diffuse = Diffuse(diff_color=rgb(.75, .25, .35), diff_color_ref=rgb(.75, .25, .35))
-    white_diffuse = Diffuse(diff_color=rgb(.73, .73, .73), diff_color_ref=rgb(.73, .73, .73))
-    emissive_white = Emissive(color=rgb(.9, .9, .9))
-    blue_glass = Refractive(n=vec3(1.5 + 0.05e-8j, 1.5 + 0.02e-8j, 1.5 + 0.j), purity=0.99, purity_ref=0.4)
+    green_diffuse = Diffuse(
+        diff_color=rgb(0.33, 0.73, 0.43), diff_color_ref=rgb(0.33, 0.73, 0.43)
+    )
+    red_diffuse = Diffuse(
+        diff_color=rgb(0.75, 0.25, 0.35), diff_color_ref=rgb(0.75, 0.25, 0.35)
+    )
+    white_diffuse = Diffuse(
+        diff_color=rgb(0.73, 0.73, 0.73), diff_color_ref=rgb(0.73, 0.73, 0.73)
+    )
+    emissive_white = Emissive(color=rgb(0.9, 0.9, 0.9))
+    blue_glass = Refractive(
+        n=vec3(1.5 + 0.05e-8j, 1.5 + 0.02e-8j, 1.5 + 0.0j), purity=0.99, purity_ref=0.4
+    )
 
     # this is the light
     Sc.add(
@@ -115,6 +123,7 @@ def main():
 
     img.save("cornell_box_1.png")
     # img.show()
+
 
 if __name__ == "__main__":
     main()

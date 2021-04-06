@@ -142,7 +142,7 @@ class Cuboid_Collider(Collider):
     def get_Normal(self, hit):
 
         P = (hit.point - self.center).matmul(self.basis_matrix)
-        absP = vec3(1.0 / self.width, 1.0 / self.height, 1.0 / self.length) * np.abs(P)
+        absP = vec3(1.0 / self.width, 1.0 / self.height, 1.0 / self.length) * P.abs()
         Pmax = np.maximum(np.maximum(absP.x, absP.y), absP.z)
         P.x = np.where(Pmax == absP.x, np.sign(P.x), 0.0)
         P.y = np.where(Pmax == absP.y, np.sign(P.y), 0.0)

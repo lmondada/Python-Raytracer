@@ -3,6 +3,8 @@ import numpy as np
 import time
 import copy
 from multiprocessing import Pool, cpu_count
+import csv
+
 from .utils import colour_functions as cf
 from .camera import Camera
 from .utils.constants import *
@@ -11,6 +13,8 @@ from .ray import Ray, get_raycolor, get_distances
 from . import lights
 from .backgrounds.skybox import SkyBox
 from .backgrounds.panorama import Panorama
+
+import progressbar
 
 
 def get_raycolor_tuple(x):
@@ -68,7 +72,9 @@ class Scene:
         self.scene_primitives += [primitive]
         self.collider_list += primitive.collider_list
 
-    def render(self, samples_per_pixel, progress_bar=False, batch_size=None):
+    def render(
+        self, samples_per_pixel, progress_bar=False, batch_size=None, save_csv=None
+    ):
 
         print("Rendering...")
 
@@ -76,12 +82,12 @@ class Scene:
         all_rays = [self.camera.get_ray(self.n) for i in range(samples_per_pixel)]
         color_RGBlinear = rgb(0.0, 0.0, 0.0).repeat(all_rays[0].length)
 
-        # n_proc = cpu_count()
+        n_proc = cpu_count()
         # rays_per_batch = len(self.camera.get_ray(self.n))
         # batch_size = batch_size or np.ceil(samples_per_pixel / n_proc).astype(int)
         #
         # all_rays_batched = batch_rays(all_rays, batch_size)
-        # args = [(batch, copy.deepcopy(self)) for batch in all_rays_batched]
+        args = [(ray, copy.deepcopy(self)) for ray in all_rays]
 
         def compute_cols(ray, mining):
             # Aggregate the colours per pixel
@@ -103,8 +109,10 @@ class Scene:
             # combined_cols.clip(0.0, 1.0)
 
             # Aggregate the mining statistics
-            mining["col_probs"] = np.concatenate((mining["col_probs"], ray.p_z))
-            mining["col_probs_ref"] = np.concatenate((mining["col_probs_ref"], ray.p_z_ref))
+            mining["col_probs"] = np.concatenate((mining["col_probs"], ray.log_p_z))
+            mining["col_probs_ref"] = np.concatenate(
+                (mining["col_probs_ref"], ray.log_p_z_ref)
+            )
 
             return combined_cols, mining
 
@@ -141,12 +149,15 @@ class Scene:
             We can ignore incomplete paths (paths that didn't make it to the detector in time).
             This is ok to do, since they contribute nothing to the final image anyway (they add 0).
             """
-            # first, we need to filter out runs that didn't hit the light (prob -1)
-            clean_pz = dust["col_probs"][dust["col_probs"] >= 0]
-            clean_pz_ref = dust["col_probs_ref"][dust["col_probs_ref"] >= 0]
+            # first, we need to filter out runs that didn't hit the light (log prob 1)
+            log_clean_pz_ref = dust["col_probs_ref"][dust["col_probs"] != 1.0]
+            log_clean_pz = dust["col_probs"][dust["col_probs"] != 1.0]
 
-            js_0 = sum(np.log(clean_pz))
-            js_1 = sum(np.log(clean_pz_ref))
+            assert all(log_clean_pz <= 1e-7)
+            assert all(log_clean_pz_ref <= 0)
+
+            js_0 = sum(log_clean_pz)
+            js_1 = sum(log_clean_pz_ref)
             jlr = np.exp(js_0 - js_1)
 
             print("Joint score:", js_0)
@@ -161,46 +172,43 @@ class Scene:
             "col_probs_ref": [],
         }
 
-        if progress_bar == True:
-            try:
-                import progressbar
-            except ModuleNotFoundError:
-                print("progressbar module is required. \nRun: pip install progressbar")
+        bar = progressbar.ProgressBar(maxval=2 * len(args))
+        all_rays_data = []
 
-            bar = progressbar.ProgressBar(maxval=samples_per_pixel)
-            bar.start()
-            for i in range(samples_per_pixel):
-                rays, _ = get_raycolor(all_rays[i], self)
-                color, mined_dust = compute_cols(rays, mined_dust)
-                color_RGBlinear += color
-                bar.update(i)
-            bar.finish()
-
-            # with Pool(processes=n_proc) as pool:
-            #     bar.start()
-            #     all_rays = None
-            #     for i, (ray, _) in enumerate(
-            #             pool.imap_unordered(get_raycolor_tuple, args)
-            #     ):
-            #         # Final color for each pixel will be an average of all the samples collected for the pixel.
-            #         if all_rays is None:
-            #             all_rays = ray
-            #         else:
-            #             all_rays = all_rays.combine(ray)
-            #         bar.update(i)
-            #
-            #     color_RGBlinear, mined_dust = compute_cols(all_rays, mined_dust)
-            #     bar.finish()
-
-        else:
+        try:
             with Pool(processes=n_proc) as pool:
-                for i, (ray, _) in enumerate(
+                bar.start()
+                for i, (rays, _) in enumerate(
                     pool.imap_unordered(get_raycolor_tuple, args)
                 ):
-                    color, mined_dust = compute_cols(ray, mined_dust)
-                    for batch in range(batch_size):
-                        beg, end = batch * rays_per_batch, (batch + 1) * rays_per_batch
-                        color_RGBlinear += color[beg:end]
+                    bar.update(2 * i)
+                    color, mined_dust = compute_cols(rays, mined_dust)
+                    color_RGBlinear += color
+                    # save the data
+                    for j in range(len(rays)):
+                        assert abs(rays[j].color.x - rays[j].color.y) < 1e-7
+                        assert abs(rays[j].color.z - rays[j].color.y) < 1e-7
+                        all_rays_data.append(
+                            {
+                                "color": rays[j].color.x,
+                                "log_p_z": rays[j].log_p_z,
+                                "log_p_z_ref": rays[j].log_p_z_ref,
+                                "pixel_index": rays[j].pixel_index,
+                            }
+                        )
+                    bar.update(2 * i + 1)
+        finally:
+            if save_csv is not None:
+                # backup all data in file
+                with open(save_csv, "w", newline="") as csvfile:
+                    fieldnames = ["pixel_index", "color", "log_p_z", "log_p_z_ref"]
+                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                    writer.writeheader()
+                    for ray_data in all_rays_data:
+                        if ray_data["log_p_z"] == 1.0:
+                            continue
+                        writer.writerow(ray_data)
+            bar.finish()
 
         # average samples per pixel (antialiasing)
         color_RGBlinear = color_RGBlinear / samples_per_pixel

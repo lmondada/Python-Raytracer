@@ -10,8 +10,15 @@ from ..textures import *
 
 
 class Diffuse(Material):
-    def __init__(self, diff_color, diff_color_ref=rgb(0.5, 0.5, 0.5), diffuse_rays=10, ambient_weight=0.5,
-                 ambient_weight_ref=0.5, **kwargs):
+    def __init__(
+        self,
+        diff_color,
+        diff_color_ref=rgb(0.5, 0.5, 0.5),
+        diffuse_rays=10,
+        ambient_weight=0.5,
+        ambient_weight_ref=0.5,
+        **kwargs
+    ):
         super().__init__(**kwargs)
 
         if isinstance(diff_color, vec3):
@@ -25,8 +32,12 @@ class Diffuse(Material):
             self.diff_texture_ref = diff_color_ref  # Colour of reference material
 
         self.diffuse_rays = diffuse_rays  # Number of rays to average over
-        self.max_diffuse_reflections = 2  # Number of bounces on diffuse surfaces to compute
-        self.ambient_weight = ambient_weight  # How much of the ambient colour leaks into this object
+        self.max_diffuse_reflections = (
+            2  # Number of bounces on diffuse surfaces to compute
+        )
+        self.ambient_weight = (
+            ambient_weight  # How much of the ambient colour leaks into this object
+        )
         self.ambient_weight_ref = ambient_weight_ref
 
     def get_pdf(self, size, N_repeated, nudged_repeated, scene, is_ref=False):
@@ -44,16 +55,23 @@ class Diffuse(Material):
 
     def get_color(self, scene, ray, hit, max_index):
         """Get the colour of this material for the given ray and intersect details."""
-        
-        hit.point = (ray.origin + ray.dir * hit.distance) # intersection point
-        N = hit.material.get_Normal(hit)                  # normal 
+
+        hit.point = ray.origin + ray.dir * hit.distance  # intersection point
+        N = hit.material.get_Normal(hit)  # normal
 
         diff_color = self.diff_texture.get_color(hit)  # Own colour at this point
         diff_color_ref = self.diff_texture_ref.get_color(hit)
 
-        color = rgb(0., 0., 0.)  # Default in case the ray doesn't reach a light source.
+        if not diff_color - diff_color_ref.abs() < 1e-6:
+            print("WARNING: input colors do not match")
 
-        n_rays_in = ray.p_z.shape[0]  # Count the number of incoming rays for indexing purposes.
+        color = rgb(
+            0.0, 0.0, 0.0
+        )  # Default in case the ray doesn't reach a light source.
+
+        n_rays_in = ray.log_p_z.shape[
+            0
+        ]  # Count the number of incoming rays for indexing purposes.
 
         if ray.diffuse_reflections < 1:
             """First diffuse reflection, average multiple rays."""
@@ -66,24 +84,24 @@ class Diffuse(Material):
         else:
             """Max diffuse reflections reached; don't compute the ray any further.
             Set probabilities < 0 to discount from later calculation."""
-            ray.p_z = np.full(ray.p_z.shape, -1)
-            ray.p_z_ref = np.full(ray.p_z_ref.shape, -1)
-            ray.color = color.repeat(ray.p_z.shape[0])
+            ray.log_p_z = np.full(ray.log_p_z.shape, 1)
+            ray.log_p_z_ref = np.full(ray.log_p_z_ref.shape, 1)
+            ray.color = color.repeat(ray.log_p_z.shape[0])
             return ray
 
         # Compute n_diffuse_rays ray colours:
-        nudged = hit.point + N * .000001
+        nudged = hit.point + N * 0.000001
         N_repeated = N.repeat(n_diffuse_rays)
 
         if ray.n.shape() == 1:
-            n_repeated = ray.n.repeat(ray.p_z.shape[0] * n_diffuse_rays)
+            n_repeated = ray.n.repeat(ray.log_p_z.shape[0] * n_diffuse_rays)
         else:
             n_repeated = ray.n.repeat(n_diffuse_rays)
 
         nudged_repeated = nudged.repeat(n_diffuse_rays)
         hit_repeated = hit.point.repeat(n_diffuse_rays)
-        pz_repeated = np.repeat(ray.p_z, n_diffuse_rays)
-        pz_ref_repeated = np.repeat(ray.p_z_ref, n_diffuse_rays)
+        log_pz_repeated = np.repeat(ray.log_p_z, n_diffuse_rays)
+        log_pz_ref_repeated = np.repeat(ray.log_p_z_ref, n_diffuse_rays)
 
         size = N.shape()[0] * n_diffuse_rays
 
@@ -100,47 +118,66 @@ class Diffuse(Material):
         PDF_val_ref = s_pdf_ref.value(ray_dir)
 
         # Generate indices for the new rays
-        new_ray_indices = np.array([
-            # Keep the old indices in the right places
-            ray.ray_index[i] if j == 0
-            else max_index + i * (n_diffuse_rays - 1) + j
-            for i in range(n_rays_in)
-            for j in range(n_diffuse_rays)
-        ])
-        new_max_index = max_index + n_rays_in * (n_diffuse_rays - 1) if n_diffuse_rays > 1 else max_index
+        new_ray_indices = np.array(
+            [
+                # Keep the old indices in the right places
+                ray.ray_index[i] if j == 0 else max_index + i * (n_diffuse_rays - 1) + j
+                for i in range(n_rays_in)
+                for j in range(n_diffuse_rays)
+            ]
+        )
+        new_max_index = (
+            max_index + n_rays_in * (n_diffuse_rays - 1)
+            if n_diffuse_rays > 1
+            else max_index
+        )
 
-        new_ray_deps = np.repeat(
-            ray.ray_index,
-            n_diffuse_rays
-        ).reshape(n_rays_in * n_diffuse_rays, 1)
+        new_ray_deps = np.repeat(ray.ray_index, n_diffuse_rays).reshape(
+            n_rays_in * n_diffuse_rays, 1
+        )
+
+        assert np.all(log_pz_ref_repeated != 1.0)
+        assert np.all(log_pz_repeated != 1)
+        assert np.all((log_pz_repeated + np.log(PDF_val) < 1e-7))
+        assert np.all(
+            (log_pz_ref_repeated + np.log(PDF_val_ref) < 1e-7)
+            | (log_pz_ref_repeated == 1.0)
+        )
 
         # Recurse to compute the colour of the sampled rays
         out_ray, _ = get_raycolor(
             Ray(
-                ray.pixel_index.repeat(n_diffuse_rays),
-                new_ray_indices,
-                np.hstack((np.repeat(ray.ray_dependencies, n_diffuse_rays, axis=0), new_ray_deps)),
-                nudged_repeated,
-                ray_dir,
-                ray.depth + 1,
-                n_repeated,
-                pz_repeated * PDF_val,
-                pz_ref_repeated * PDF_val_ref,
-                ray.color.repeat(n_diffuse_rays),
-                ray.reflections + 1,
-                ray.transmissions,
-                ray.diffuse_reflections + 1
+                pixel_index=ray.pixel_index.repeat(n_diffuse_rays),
+                ray_index=new_ray_indices,
+                ray_dependencies=np.hstack(
+                    (
+                        np.repeat(ray.ray_dependencies, n_diffuse_rays, axis=0),
+                        new_ray_deps,
+                    )
+                ),
+                origin=nudged_repeated,
+                dir=ray_dir,
+                depth=ray.depth + 1,
+                n=n_repeated,
+                log_trans_probs=log_pz_repeated + np.log(PDF_val),
+                log_trans_probs_ref=log_pz_ref_repeated + np.log(PDF_val_ref),
+                color=ray.color.repeat(n_diffuse_rays),
+                reflections=ray.reflections + 1,
+                transmissions=ray.transmissions,
+                diffuse_reflections=ray.diffuse_reflections + 1,
             ),
             scene,
             new_max_index,
         )
+
         color_temp = out_ray.color
         # dot product of each ray with the normal
-        NdotL = np.clip(ray_dir.dot(N_repeated), 0., 1.)
+        NdotL = np.clip(ray_dir.dot(N_repeated), 0.0, 1.0)
 
         # update values to account for any new rays.
         indexing_order = [
-            np.where(ray.ray_index == pos)[0][0] for pos in out_ray.ray_dependencies[:, -1]
+            np.where(ray.ray_index == pos)[0][0]
+            for pos in out_ray.ray_dependencies[:, -1]
         ]
 
         PDF_val = np.array([PDF_val[round(pos)] for pos in indexing_order])
@@ -153,17 +190,21 @@ class Diffuse(Material):
         # Weight this colour by the probability of having sampled each ray
         # We use the Lambertian BRDF
         color_temp = color_temp * NdotL / PDF_val / np.pi
-        color_temp_ref = color_temp * NdotL / PDF_val_ref / np.pi
+        # I am not sure this change is justified, but its kinda necessary
+        # color_temp_ref = color_temp * NdotL / PDF_val_ref / np.pi
+        color_temp_ref = color_temp  # * NdotL / PDF_val / np.pi
 
         # Collect the ray colors
-        n_rays = out_ray.p_z.shape[0]
+        n_rays = out_ray.log_p_z.shape[0]
         out_ray.color = color.repeat(n_rays) + diff_color * color_temp
         color_ref = color.repeat(n_rays) + diff_color_ref * color_temp_ref
 
         # Transition probabilities include the colours
         # since this is computed deterministically from the ray directions and theta,
         # this will simply make the ref prob 0 if color_temp and color_temp_ref do not match for a given ray.
-        col_matches = out_ray.color == color_ref
-        out_ray.p_z_ref = out_ray.p_z_ref * col_matches
+        col_matches = (out_ray.color - color_ref).abs() < 1e-6
+
+        assert all(col_matches)
+        # out_ray.p_z_ref = out_ray.p_z_ref * col_matches
 
         return out_ray
