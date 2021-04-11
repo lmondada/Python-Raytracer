@@ -1,7 +1,11 @@
-import numpy as np
-from scipy.stats import norm
+import autograd.numpy as np
+from autograd.scipy.stats import norm
 from ..utils.vector3 import vec3
 from abc import abstractmethod
+
+
+def random_in_0_1(shape):
+    return np.random.Generator.uniform(size=shape)
 
 
 def random_in_unit_disk(shape):
@@ -186,7 +190,7 @@ class mixed_pdf(PDF):
 
 
 class normal_pdf(PDF):
-    """Normal distribution"""
+    """Normal distribution for vec3"""
 
     def __init__(self, mu: vec3, sigma=1):
         self.mu = mu  # mean/centre
@@ -220,6 +224,33 @@ class normal_pdf(PDF):
             y=np.random.normal(self.mu.y, self.sigma, self.shape),
             z=np.random.normal(self.mu.z, self.sigma, self.shape),
         ).normalize()
+
+
+class normal_array_pdf(PDF):
+    """Normal distribution for standard np.array"""
+
+    def __init__(self, mu: np.array, sigma=1):
+        self.mu = mu  # mean/centre
+        self.sigma = sigma  # standard deviation
+        self.shape = mu.shape
+
+    def value(self, x: np.array) -> np.array:
+        """Evaluate the normal at the given point."""
+        epsilon = 1e-5
+        val = norm.pdf(x, self.mu, self.sigma) * epsilon
+        assert max(val) <= 1
+        assert min(val) >= 0
+        return val
+
+    def log_value(self, x: np.array) -> np.array:
+        """Evaluate the log normal at the given point."""
+        epsilon = 1e-5
+        val = norm.logpdf(x, self.mu, self.sigma) + np.log(epsilon)
+        assert max(val) <= 0
+        return val
+
+    def generate(self) -> np.array:
+        return np.random.normal(self.mu, self.sigma, self.shape).normalize()
 
 
 def random_in_unit_spherical_caps(shape, origin, importance_sampled_list):

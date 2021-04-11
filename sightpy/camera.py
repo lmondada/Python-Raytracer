@@ -51,7 +51,7 @@ class Camera:
         self.y = yy.flatten()
 
     def get_ray(
-        self, n
+        self, n, theta_dim
     ):  # n = index of refraction of scene main medium (for air n = 1.)
 
         # in each pixel, take a random position to avoid aliasing.
@@ -88,6 +88,8 @@ class Camera:
             n=n.repeat(n_rays),
             log_trans_probs=np.zeros((n_rays)),
             log_trans_probs_ref=np.zeros((n_rays)),
+            joint_score=np.zeros((theta_dim, n_rays)),
+            joint_score_ref=np.zeros((theta_dim, n_rays)),
             color=rgb(0.0, 0.0, 0.0).repeat(n_rays),
             reflections=0,
             transmissions=0,

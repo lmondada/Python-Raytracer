@@ -6,8 +6,8 @@ def main():
     Sc = Scene(ambient_color=rgb(0.00, 0.00, 0.00))
     angle = -0
     Sc.add_Camera(
-        screen_width=100,
-        screen_height=100,
+        screen_width=10,
+        screen_height=10,
         look_from=vec3(278, 278, 800),
         look_at=vec3(278, 278, 0),
         focal_distance=1.0,
@@ -25,8 +25,11 @@ def main():
         diff_color=rgb(0.73, 0.73, 0.73), diff_color_ref=rgb(0.73, 0.73, 0.73)
     )
     emissive_white = Emissive(color=rgb(0.9, 0.9, 0.9))
+    # Only change the purity:
     blue_glass = Refractive(
-        n=vec3(1.5 + 0.05e-8j, 1.5 + 0.02e-8j, 1.5 + 0.0j), purity=0.99, purity_ref=0.4
+        n=vec3(1.5 + 0.05e-8j, 1.5 + 0.02e-8j, 1.5 + 0.0j),
+        n_ref=vec3(1.5 + 0.05e-8j, 1.5 + 0.02e-8j, 1.5 + 0.0j),
+        purity=0.99, purity_ref=0.4, theta_pos=(0, 1, 2, 3)
     )
 
     # this is the light
@@ -119,7 +122,7 @@ def main():
         importance_sampled=True,
     )
     # Render
-    img, gold_bars = Sc.render(samples_per_pixel=48, progress_bar=True)
+    img, gold_bars = Sc.render(samples_per_pixel=1, progress_bar=True, theta_dim=4)
 
     img.save("cornell_box_1.png")
     # img.show()

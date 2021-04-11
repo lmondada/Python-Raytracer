@@ -102,6 +102,8 @@ class Diffuse(Material):
         hit_repeated = hit.point.repeat(n_diffuse_rays)
         log_pz_repeated = np.repeat(ray.log_p_z, n_diffuse_rays)
         log_pz_ref_repeated = np.repeat(ray.log_p_z_ref, n_diffuse_rays)
+        joint_score_repeated = np.repeat(ray.joint_score, n_diffuse_rays, axis=1)
+        joint_score_ref_repeated = np.repeat(ray.joint_score_ref, n_diffuse_rays, axis=1)
 
         size = N.shape()[0] * n_diffuse_rays
 
@@ -161,6 +163,8 @@ class Diffuse(Material):
                 n=n_repeated,
                 log_trans_probs=log_pz_repeated + np.log(PDF_val),
                 log_trans_probs_ref=log_pz_ref_repeated + np.log(PDF_val_ref),
+                joint_score=joint_score_repeated,
+                joint_score_ref=joint_score_ref_repeated,
                 color=ray.color.repeat(n_diffuse_rays),
                 reflections=ray.reflections + 1,
                 transmissions=ray.transmissions,

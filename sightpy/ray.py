@@ -19,6 +19,8 @@ class Ray:
         n,
         log_trans_probs,
         log_trans_probs_ref,
+        joint_score,
+        joint_score_ref,
         color,
         reflections,
         transmissions,
@@ -45,6 +47,13 @@ class Ray:
         # This will be zero if it never hits a light source.
         self.log_p_z = log_trans_probs
         self.log_p_z_ref = log_trans_probs_ref
+
+        # Keep track of the joint scores for this ray
+        # This is an array of shape (dim_theta, ray.length)
+        self.dim_theta = joint_score.shape[0]
+        self.joint_score = joint_score
+        self.joint_score_ref = joint_score_ref
+
         # keep track of the color of each sub ray.
         self.color = color
 
@@ -58,19 +67,24 @@ class Ray:
         # materials like metals is usually between (0.1j,3j)
         # and for transparent materials like glass is  usually between (0.j , 1e-7j)
 
-        self.reflections = reflections  # reflections is the number of the refrections, starting at zero for camera rays
-        self.transmissions = transmissions  # transmissions is the number of the transmissions/refractions,
-        #                                   # starting at zero for camera rays
+        # reflections is the number of the refrections, starting at zero for camera rays
+        self.reflections = reflections
+        # transmissions is the number of the transmissions/refractions,
+        # starting at zero for camera rays
+        self.transmissions = transmissions
+
+        # reflections is the number of the reflections,
+        # starting at zero for camera rays
         self.diffuse_reflections = (
-            diffuse_reflections  # reflections is the number of the refrections,
+            diffuse_reflections
         )
-        #                                               # starting at zero for camera rays
 
     def extract(self, hit_check):
         # ray_dependencies is a 2d array, so adjust hit_check accordingly
         target_shape = sum(hit_check), self.ray_dependencies.shape[1]
         hit_check_dep = np.reshape(hit_check, (self.length, 1))
         hit_check_dep = hit_check_dep.repeat(target_shape[1], axis=1)
+        hit_check_score = np.tile(hit_check, (self.dim_theta, 1))
         return Ray(
             np.extract(hit_check, self.pixel_index),
             np.extract(hit_check, self.ray_index),
@@ -81,6 +95,8 @@ class Ray:
             self.n.extract(hit_check),
             np.extract(hit_check, self.log_p_z),
             np.extract(hit_check, self.log_p_z_ref),
+            np.reshape(np.extract(hit_check_score, self.joint_score), (self.dim_theta, -1)),
+            np.reshape(np.extract(hit_check_score, self.joint_score_ref), (self.dim_theta, -1)),
             self.color.extract(hit_check),
             self.reflections,
             self.transmissions,
@@ -101,6 +117,8 @@ class Ray:
             self.n.get_subvec(ind),
             self.log_p_z[ind],
             self.log_p_z_ref[ind],
+            self.joint_score[:, ind],
+            self.joint_score_ref[:, ind],
             self.color.get_subvec(ind),
             self.reflections,
             self.transmissions,
@@ -111,6 +129,8 @@ class Ray:
     def where(cond, x, y):
         if x.depth != y.depth:
             raise ValueError("Both rays must have same depth")
+
+        cond_score = np.tile(cond, (x.dim_theta, 1))
         return Ray(
             np.where(cond, x.pixel_index, y.pixel_index),
             np.where(cond, x.ray_index, y.ray_index),
@@ -121,6 +141,8 @@ class Ray:
             vec3.where(cond, x.n, y.n),
             np.where(cond, x.log_p_z, y.log_p_z),
             np.where(cond, x.log_p_z_ref, y.log_p_z_ref),
+            np.where(cond_score, x.joint_score, y.joint_score),
+            np.where(cond_score, x.joint_score_ref, y.joint_score_ref),
             vec3.where(cond, x.color, y.color),
             max(x.reflections, y.reflections),
             max(x.transmissions, y.transmissions),
@@ -138,6 +160,8 @@ class Ray:
         n = [r.n for r in rays]
         log_p_z = [r.log_p_z for r in rays]
         log_p_z_ref = [r.log_p_z_ref for r in rays]
+        joint_score = [r.joint_score for r in rays]
+        joint_score_ref = [r.joint_score_ref for r in rays]
         color = [r.color for r in rays]
         reflections = max(r.reflections for r in rays)
         transmissions = max(r.transmissions for r in rays)
@@ -155,6 +179,8 @@ class Ray:
             vec3.concatenate(n),
             np.concatenate(log_p_z),
             np.concatenate(log_p_z_ref),
+            np.concatenate(joint_score, axis=1),
+            np.concatenate(joint_score_ref, axis=1),
             vec3.concatenate(color),
             reflections,
             transmissions,
@@ -166,6 +192,7 @@ class Ray:
         target_shape = sum(mask), self.ray_dependencies.shape[1]
         mask_dep = np.reshape(mask, (self.length, 1))
         mask_dep = mask_dep.repeat(target_shape[1], axis=1)
+        mask_score = np.tile(mask, (self.dim_theta, 1))
 
         self.origin = self.origin.place_into(mask, other.origin)
         self.dir = self.dir.place_into(mask, other.dir)
@@ -176,6 +203,8 @@ class Ray:
         np.place(self.ray_dependencies, mask_dep, other.ray_dependencies.reshape(-1))
         np.place(self.log_p_z, mask, other.log_p_z)
         np.place(self.log_p_z_ref, mask, other.log_p_z_ref)
+        np.place(self.joint_score, mask_score, other.joint_score)
+        np.place(self.joint_score_ref, mask_score, other.joint_score_ref)
 
     def combine(self, other: "Ray"):
         """Merge two sets of rays into one."""
@@ -190,6 +219,8 @@ class Ray:
             self.n.append(other.n),
             np.concatenate((self.log_p_z, other.log_p_z)),
             np.concatenate((self.log_p_z_ref, other.log_p_z_ref)),
+            np.concatenate((self.joint_score, other.joint_score), axis=1),
+            np.concatenate((self.joint_score, other.joint_score_ref), axis=1),
             self.color.append(other.color),
             max(self.reflections, other.reflections),
             max(self.transmissions, other.transmissions),
@@ -240,6 +271,8 @@ def get_raycolor(ray, scene, max_index=0):
         ray.n,
         ray.log_p_z,
         ray.log_p_z_ref,
+        ray.joint_score,
+        ray.joint_score_ref,
         ray.color,
         ray.reflections,
         ray.transmissions,

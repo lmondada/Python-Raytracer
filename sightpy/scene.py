@@ -73,13 +73,13 @@ class Scene:
         self.collider_list += primitive.collider_list
 
     def render(
-        self, samples_per_pixel, progress_bar=False, batch_size=None, save_csv=None
+        self, samples_per_pixel, progress_bar=False, batch_size=None, save_csv=None, theta_dim=1
     ):
 
         print("Rendering...")
 
         t0 = time.time()
-        all_rays = [self.camera.get_ray(self.n) for i in range(samples_per_pixel)]
+        all_rays = [self.camera.get_ray(self.n, theta_dim) for i in range(samples_per_pixel)]
         color_RGBlinear = rgb(0.0, 0.0, 0.0).repeat(all_rays[0].length)
 
         n_proc = cpu_count()
@@ -113,6 +113,10 @@ class Scene:
             mining["col_probs_ref"] = np.concatenate(
                 (mining["col_probs_ref"], ray.log_p_z_ref)
             )
+            mining["joint_score"] = np.concatenate((mining["joint_score"], ray.joint_score), axis=1)
+            mining["joint_score_ref"] = np.concatenate(
+                (mining["joint_score_ref"], ray.joint_score_ref), axis=1
+            )
 
             return combined_cols, mining
 
@@ -145,7 +149,7 @@ class Scene:
              - p(Z_i|θ,z_<i) = PROD_z p(z_i|θ,z<i) since each ray is independent of the others.
              - > log p(Z_i|θ,Z_<i) = SUM_z log p(z_i|θ,z<i) = SUM_z SUM_j<i log p(z_j <- z_j-1|θ)
 
-            So mining the gold is just a case of summing over the log probs of complete paths.
+            So mining the gold is just a case of summing over the (gradient) log probs of complete paths.
             We can ignore incomplete paths (paths that didn't make it to the detector in time).
             This is ok to do, since they contribute nothing to the final image anyway (they add 0).
             """
@@ -153,12 +157,15 @@ class Scene:
             log_clean_pz_ref = dust["col_probs_ref"][dust["col_probs"] != 1.0]
             log_clean_pz = dust["col_probs"][dust["col_probs"] != 1.0]
 
+            clean_joint_score_ref = dust["joint_score_ref"][:, dust["col_probs"] != 1.0]
+            clean_joint_score = dust["joint_score"][:, dust["col_probs"] != 1.0]
+
             assert all(log_clean_pz <= 1e-7)
             assert all(log_clean_pz_ref <= 0)
 
-            js_0 = sum(log_clean_pz)
-            js_1 = sum(log_clean_pz_ref)
-            jlr = np.exp(js_0 - js_1)
+            js_0 = np.sum(clean_joint_score, axis=1)
+            js_1 = np.sum(clean_joint_score_ref, axis=1)
+            jlr = np.exp(sum(log_clean_pz) - sum(log_clean_pz_ref))
 
             print("Joint score:", js_0)
             print("Reference joint score:", js_1)
@@ -170,6 +177,8 @@ class Scene:
         mined_dust = {
             "col_probs": [],
             "col_probs_ref": [],
+            "joint_score": np.zeros((theta_dim, 0)),
+            "joint_score_ref": np.zeros((theta_dim, 0)),
         }
 
         bar = progressbar.ProgressBar(maxval=2 * len(args))
@@ -186,13 +195,15 @@ class Scene:
                     color_RGBlinear += color
                     # save the data
                     for j in range(len(rays)):
-                        assert abs(rays[j].color.x - rays[j].color.y) < 1e-7
-                        assert abs(rays[j].color.z - rays[j].color.y) < 1e-7
+                        # assert abs(rays[j].color.x - rays[j].color.y) < 1e-7
+                        # assert abs(rays[j].color.z - rays[j].color.y) < 1e-7
                         all_rays_data.append(
                             {
                                 "color": rays[j].color.x,
                                 "log_p_z": rays[j].log_p_z,
                                 "log_p_z_ref": rays[j].log_p_z_ref,
+                                "joint_score": rays[j].joint_score,
+                                "joint_score_ref": rays[j].joint_score_ref,
                                 "pixel_index": rays[j].pixel_index,
                             }
                         )
@@ -201,7 +212,7 @@ class Scene:
             if save_csv is not None:
                 # backup all data in file
                 with open(save_csv, "w", newline="") as csvfile:
-                    fieldnames = ["pixel_index", "color", "log_p_z", "log_p_z_ref"]
+                    fieldnames = ["pixel_index", "color", "log_p_z", "log_p_z_ref", "joint_score", "joint_score_ref"]
                     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                     writer.writeheader()
                     for ray_data in all_rays_data:

@@ -1,7 +1,9 @@
 import numpy as np
 import numbers
 from typing import Tuple
-
+import autograd.numpy as np
+# from autograd.extend import primitive, defvjp
+# note: we must tell autograd how to take the gradient of vec3 instances explicitly.
 
 def extract(cond, x):
     if isinstance(x, numbers.Number):
@@ -20,57 +22,67 @@ class vec3:
         # Used for debugging. This method is called when you print an instance
         return "(" + str(self.x) + ", " + str(self.y) + ", " + str(self.z) + ")"
 
+    # @primitive
     def __add__(self, v):
         if isinstance(v, vec3):
             return vec3(self.x + v.x, self.y + v.y, self.z + v.z)
         elif isinstance(v, numbers.Number) or isinstance(v, np.ndarray):
             return vec3(self.x + v, self.y + v, self.z + v)
 
+    # @primitive
     def __radd__(self, v):
         if isinstance(v, vec3):
             return vec3(self.x + v.x, self.y + v.y, self.z + v.z)
         elif isinstance(v, numbers.Number) or isinstance(v, np.ndarray):
             return vec3(self.x + v, self.y + v, self.z + v)
 
+    # @primitive
     def __sub__(self, v):
         if isinstance(v, vec3):
             return vec3(self.x - v.x, self.y - v.y, self.z - v.z)
         elif isinstance(v, numbers.Number) or isinstance(v, np.ndarray):
             return vec3(self.x - v, self.y - v, self.z - v)
 
+    # @primitive
     def __rsub__(self, v):
         if isinstance(v, vec3):
             return vec3(v.x - self.x, v.y - self.y, v.z - self.z)
         elif isinstance(v, numbers.Number) or isinstance(v, np.ndarray):
             return vec3(v - self.x, v - self.y, v - self.z)
 
+    # @primitive
     def __mul__(self, v):
         if isinstance(v, vec3):
             return vec3(self.x * v.x, self.y * v.y, self.z * v.z)
         elif isinstance(v, numbers.Number) or isinstance(v, np.ndarray):
             return vec3(self.x * v, self.y * v, self.z * v)
 
+    # @primitive
     def __rmul__(self, v):
         if isinstance(v, vec3):
             return vec3(v.x * self.x, v.y * self.y, v.z * self.z)
         elif isinstance(v, numbers.Number) or isinstance(v, np.ndarray):
             return vec3(v * self.x, v * self.y, v * self.z)
 
+    # @primitive
     def __truediv__(self, v):
         if isinstance(v, vec3):
             return vec3(self.x / v.x, self.y / v.y, self.z / v.z)
         elif isinstance(v, numbers.Number) or isinstance(v, np.ndarray):
             return vec3(self.x / v, self.y / v, self.z / v)
 
+    # @primitive
     def __rtruediv__(self, v):
         if isinstance(v, vec3):
             return vec3(v.x / self.x, v.y / self.y, v.z / self.z)
         elif isinstance(v, numbers.Number) or isinstance(v, np.ndarray):
             return vec3(v / self.x, v / self.y, v / self.z)
 
+    # @primitive
     def abs(self):
         return vec3(np.abs(self.x), np.abs(self.y), np.abs(self.z))
 
+    # @primitive
     def __abs__(self):
         return self.abs()
 
@@ -105,6 +117,7 @@ class vec3:
             self.dot(new_basis[0]), self.dot(new_basis[1]), self.dot(new_basis[2])
         )
 
+    # @primitive
     def __pow__(self, a):
         return vec3(self.x ** a, self.y ** a, self.z ** a)
 
@@ -306,6 +319,7 @@ class vec3:
         """ less than is here defined for vec3 < y, y is a scalar """
         return (self.x < scalar) & (self.y < scalar) & (self.z < scalar)
 
+    # Define the explicit gradient functions we need. (TODO, maybe)
 
 def array_to_vec3(array):
     return vec3(array[0], array[1], array[2])
@@ -313,3 +327,5 @@ def array_to_vec3(array):
 
 global rgb
 rgb = vec3
+
+# Link the gradient functions to the functions they belong to
