@@ -220,7 +220,7 @@ class Ray:
             np.concatenate((self.log_p_z, other.log_p_z)),
             np.concatenate((self.log_p_z_ref, other.log_p_z_ref)),
             np.concatenate((self.joint_score, other.joint_score), axis=1),
-            np.concatenate((self.joint_score, other.joint_score_ref), axis=1),
+            np.concatenate((self.joint_score_ref, other.joint_score_ref), axis=1),
             self.color.append(other.color),
             max(self.reflections, other.reflections),
             max(self.transmissions, other.transmissions),

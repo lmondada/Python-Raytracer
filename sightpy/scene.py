@@ -201,7 +201,7 @@ class Scene:
             bar.finish()
 
         # average samples per pixel (antialiasing)
-        color_RGBlinear = color_RGBlinear / samples_per_pixel
+        color_RGBlinear = color_RGBlinear / (0.7 * samples_per_pixel)
         # gamma correction
         color = cf.sRGB_linear_to_sRGB(color_RGBlinear.to_array())
 
