@@ -17,7 +17,7 @@ class Refractive(Material):
         n_ref=vec3(1.5 + 0.0j, 1.5 + 0.0j, 1.5 + 0.0j),
         purity=0.9,
         purity_ref=0.5,
-        theta_pos=(0, 0),
+        theta_pos=(0, 0, 0),
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -33,8 +33,9 @@ class Refractive(Material):
         )
 
         # Record which positions the parameters used in this material reside in
-        # Must be a tuple of form (n.x, n.y, n.z, purity).
+        # Must be a tuple of form (n.real, n.imag, purity).
         self.theta_pos = theta_pos
+        assert len(theta_pos) == 3
 
         # Instead of defining a index of refraction (n) for each wavelenght (computationally expensive)
         # we aproximate defining the index of refraction
@@ -179,7 +180,9 @@ class Refractive(Material):
                 # decided it will reflect, so it will not contribute to the joint score.
                 new_joint_score, new_joint_score_ref = ray.joint_score, ray.joint_score_ref
                 new_joint_score[self.theta_pos[0], :] = new_joint_score[self.theta_pos[0], :] + np.mean(np.real(grad_θ_F), axis=0)
+                new_joint_score[self.theta_pos[1], :] = new_joint_score[self.theta_pos[1], :] + np.mean(np.imag(grad_θ_F), axis=0)
                 new_joint_score_ref[self.theta_pos[0], :] = new_joint_score_ref[self.theta_pos[0], :] + np.mean(np.real(grad_θ_F_ref), axis=0)
+                new_joint_score_ref[self.theta_pos[1], :] = new_joint_score_ref[self.theta_pos[1], :] + np.mean(np.imag(grad_θ_F_ref), axis=0)
 
                 assert np.all((ray.log_p_z + np.log(F.x) < 1e-7) | (ray.log_p_z == 1.0))
                 assert np.all(
@@ -313,19 +316,31 @@ class Refractive(Material):
                 np.seterr(divide="warn")  # unset warning ignore
 
                 new_joint_score, new_joint_score_ref = ray.joint_score, ray.joint_score_ref
-                new_joint_score[self.theta_pos[0], :] = new_joint_score[self.theta_pos[0], :] \
-                                                        + np.mean(grad_θ_T, axis=0) \
-                                                        + np.mean(grad_ray_dir[0], axis=0)
+                new_joint_score[self.theta_pos[0], :] = \
+                    new_joint_score[self.theta_pos[0], :] \
+                    + np.mean(np.real(grad_θ_T), axis=0) \
+                    + np.mean(np.imag(grad_ray_dir[0]), axis=0)
+                new_joint_score[self.theta_pos[1], :] =\
+                    new_joint_score[self.theta_pos[1], :] \
+                    + np.mean(np.imag(grad_θ_T), axis=0) \
+                    + np.mean(np.imag(grad_ray_dir[0]), axis=0)
 
-                new_joint_score[self.theta_pos[1], :] = new_joint_score[self.theta_pos[1], :] \
-                                                        + grad_ray_dir[1]
+                new_joint_score[self.theta_pos[2], :] = \
+                    new_joint_score[self.theta_pos[2], :] \
+                    + grad_ray_dir[1]
 
-                new_joint_score_ref[self.theta_pos[0], :] = new_joint_score_ref[self.theta_pos[0], :] \
-                                                            + np.mean(grad_θ_T_ref, axis=0) \
-                                                            + np.mean(grad_ray_dir_ref[0], axis=0)
+                new_joint_score_ref[self.theta_pos[0], :] = \
+                    new_joint_score_ref[self.theta_pos[0], :] \
+                    + np.mean(np.real(grad_θ_T_ref), axis=0) \
+                    + np.mean(np.real(grad_ray_dir_ref[0]), axis=0)
+                new_joint_score_ref[self.theta_pos[0], :] = \
+                    new_joint_score_ref[self.theta_pos[0], :] \
+                    + np.mean(np.imag(grad_θ_T_ref), axis=0) \
+                    + np.mean(np.imag(grad_ray_dir_ref[0]), axis=0)
 
-                new_joint_score_ref[self.theta_pos[1], :] = new_joint_score_ref[self.theta_pos[1], :] \
-                                                            + grad_ray_dir_ref[1]
+                new_joint_score_ref[self.theta_pos[2], :] = \
+                    new_joint_score_ref[self.theta_pos[2], :] \
+                    + grad_ray_dir_ref[1]
 
                 refracted_ray_indices = np.array(range(ray.length) + max_index + 1)
                 refracted_ray_deps = refracted_ray_indices.reshape((ray.length, 1))
