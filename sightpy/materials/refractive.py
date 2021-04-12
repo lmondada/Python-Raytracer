@@ -333,8 +333,8 @@ class Refractive(Material):
                     new_joint_score_ref[self.theta_pos[0], :] \
                     + np.mean(np.real(grad_θ_T_ref), axis=0) \
                     + np.mean(np.real(grad_ray_dir_ref[0]), axis=0)
-                new_joint_score_ref[self.theta_pos[0], :] = \
-                    new_joint_score_ref[self.theta_pos[0], :] \
+                new_joint_score_ref[self.theta_pos[1], :] = \
+                    new_joint_score_ref[self.theta_pos[1], :] \
                     + np.mean(np.imag(grad_θ_T_ref), axis=0) \
                     + np.mean(np.imag(grad_ray_dir_ref[0]), axis=0)
 
