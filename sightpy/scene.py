@@ -73,7 +73,7 @@ class Scene:
         self.collider_list += primitive.collider_list
 
     def render(
-        self, samples_per_pixel, progress_bar=False, batch_size=None, save_csv=None, theta_dim=1
+        self, samples_per_pixel, progress_bar=False, batch_size=None, save_csv=None, theta_dim=[]
     ):
 
         print("Rendering...")
@@ -90,33 +90,19 @@ class Scene:
         args = [(ray, copy.deepcopy(self)) for ray in all_rays]
 
         def compute_cols(ray, mining):
-            # Aggregate the colours per pixel
-            av_col_per_pixel = [
-                ray.color.extract(ray.pixel_index == i).mean(axis=0)
-                for i in range(min(ray.pixel_index), max(ray.pixel_index) + 1)
-            ]
             sum_col_per_pixel = [
                 ray.color.extract(ray.pixel_index == i).sum(axis=0)
                 for i in range(min(ray.pixel_index), max(ray.pixel_index) + 1)
             ]
-            combined_cols = av_col_per_pixel[0].append(tuple(av_col_per_pixel[1:]))
-            # combined_cols = sum_col_per_pixel[0].append(tuple(sum_col_per_pixel[1:]))
-            # # rescale colors
-            # max_val = max(combined_cols.max().to_array())
-            # print("max col value is ", max_val)
-            # if max_val > 1:
-            #     combined_cols = combined_cols / max_val
-            # combined_cols.clip(0.0, 1.0)
+            combined_cols = sum_col_per_pixel[0].append(tuple(sum_col_per_pixel[1:]))
 
-            # Aggregate the mining statistics
-            mining["col_probs"] = np.concatenate((mining["col_probs"], ray.log_p_z))
-            mining["col_probs_ref"] = np.concatenate(
-                (mining["col_probs_ref"], ray.log_p_z_ref)
-            )
-            mining["joint_score"] = np.concatenate((mining["joint_score"], ray.joint_score), axis=1)
-            mining["joint_score_ref"] = np.concatenate(
-                (mining["joint_score_ref"], ray.joint_score_ref), axis=1
-            )
+            # Aggregate the non-rejected rays as samples:
+            selected_rays = ray.extract(ray.log_p_z != 1.0)
+            if selected_rays.length > 0:
+                if mining["rays"] is None:
+                    mining["rays"] = selected_rays
+                else:
+                    mining["rays"] = mining["rays"].combine(selected_rays)
 
             return combined_cols, mining
 
@@ -124,61 +110,54 @@ class Scene:
             """Sort the gold out from the dust:
             Since we collected the data backwards, we need to reverse it to compute the actual statistics.
             Variables:
-             - Z: ray state for each ray in the image that we are tracking
-             - Z_i: ray states after i bounces (counting from the light source)
-             - z, z_i: state for a single ray (after i bounces)
-             - x: final image
+             - z: the full path (state) taken by a ray
+             - z_i: state for a single ray (after i bounces)
+             - x: final ray colour and pixel it lands in
 
             We want to collect:
-             - Joint Score: t(x,Z|θ) = log p(x,Z|θ) = SUM[ log p(Z_i|θ,Z_{<=i}) ] + log p(x|θ,Z), for each θ_i.
-             - Joint Likelihood Ratio: r(x,Z|θ_0, θ_1) = p(x,Z|θ_0)/p(x,Z|θ_1)
+             - Joint Score: t(x,z|θ) = ∇_θ log p(x,z|θ) = SUM[ ∇_θ log p(z_i|θ,z_{<=i})|_θ ] + ∇_θ log p(x|θ,z)|_θ, for each θ_i.
+             - Joint Likelihood Ratio: r(x,z|θ_0, θ_1) = p(x,z|θ_0)/p(x,z|θ_1)
 
             We have accumulated:
-             - p(z_i <- z_i-1|θ) transition probability for each i for each ray.
+             - log p(z|θ) = SUM_i log p(z_i|z_i-1, θ) log transition probability for each ray.
+             - ∇_θ log p(x,z|θ)|_θ = SUM_i ∇_θ log p(z_i|z_i-1, θ)|_θ gradient of log probabilities for each ray
 
             We know:
-             - p(x|θ,Z) = 1 (since x is just an average of the final ray colours/positions that land in the detector).
-             - > p(x,Z|θ) = p(Z|θ) by law of conditional probability.
-             - > r(x,Z|θ_0, θ_1) = p(Z|θ_0)/p(Z|θ_1) = exp[js(θ_0) - js(θ_1)]
+             - p(x|θ,z) = 1 (since z_n contains x, the final ray colour and pixel).
+             -> so we don't need to include any extra terms in the mining calculations
 
-            for each ray:
-             - p(z_i|z<i,θ) = p(z_i <- z_i-1|θ) ie prob that we transition to z_i from z_i-1
-             - > log p(z|θ) = SUM_i log p(z_i -> z_i+1|θ) transition/bounce probability
-
-            combining the rays:
-             - p(Z_i|θ,z_<i) = PROD_z p(z_i|θ,z<i) since each ray is independent of the others.
-             - > log p(Z_i|θ,Z_<i) = SUM_z log p(z_i|θ,z<i) = SUM_z SUM_j<i log p(z_j <- z_j-1|θ)
-
-            So mining the gold is just a case of summing over the (gradient) log probs of complete paths.
+            So mining the gold is just a case of summing over the (gradient) log probs of complete paths,
+            which we have done incrementally.
             We can ignore incomplete paths (paths that didn't make it to the detector in time).
-            This is ok to do, since they contribute nothing to the final image anyway (they add 0).
             """
-            # first, we need to filter out runs that didn't hit the light (log prob 1)
-            log_clean_pz_ref = dust["col_probs_ref"][dust["col_probs"] != 1.0]
-            log_clean_pz = dust["col_probs"][dust["col_probs"] != 1.0]
+            # Get the relevant dust from the rays
+            # (ie filter out rays that didn't land on a light source)
+            log_clean_pz = dust["rays"].log_p_z
+            log_clean_pz_ref = dust["rays"].log_p_z_ref
 
-            clean_joint_score_ref = dust["joint_score_ref"][:, dust["col_probs"] != 1.0]
-            clean_joint_score = dust["joint_score"][:, dust["col_probs"] != 1.0]
+            clean_joint_score = dust["rays"].joint_score
+            clean_joint_score_ref = dust["rays"].joint_score_ref
+
+            # Sometimes differentiating doesn't work. In this case, set to zero... #todo?
+            clean_joint_score = np.where(~np.isnan(clean_joint_score), clean_joint_score, 0)
+            clean_joint_score_ref = np.where(~np.isnan(clean_joint_score_ref), clean_joint_score_ref, 0)
 
             assert all(log_clean_pz <= 1e-7)
-            assert all(log_clean_pz_ref <= 0)
+            # assert all(log_clean_pz_ref <= 1e-70)  # we are letting colours be different for now...
 
-            js_0 = np.sum(clean_joint_score, axis=1)
-            js_1 = np.sum(clean_joint_score_ref, axis=1)
-            jlr = np.exp(sum(log_clean_pz) - sum(log_clean_pz_ref))
+            joint_likelihood_ratio = np.exp(log_clean_pz - log_clean_pz_ref)
 
-            print("Joint score:", js_0)
-            print("Reference joint score:", js_1)
-            print("Joint likelihood ratio:", jlr)
+            print("summary of gold mining:")
+            print("samples generated:", len(dust["rays"].color))
+            print("Joint score:", clean_joint_score.min(), clean_joint_score.max())
+            print("Reference joint score:", clean_joint_score_ref.min(), clean_joint_score_ref.max())
+            print("Joint likelihood ratio:", joint_likelihood_ratio.min(), joint_likelihood_ratio.max())
 
-            return js_0, js_1, jlr
+            return clean_joint_score, clean_joint_score_ref, joint_likelihood_ratio, dust["rays"].color, dust["rays"].pixel_index
 
         # Keep track of all the gold dust we are mining
         mined_dust = {
-            "col_probs": [],
-            "col_probs_ref": [],
-            "joint_score": np.zeros((theta_dim, 0)),
-            "joint_score_ref": np.zeros((theta_dim, 0)),
+            "rays": None
         }
 
         bar = progressbar.ProgressBar(maxval=2 * len(args))

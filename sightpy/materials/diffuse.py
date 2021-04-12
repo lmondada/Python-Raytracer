@@ -14,7 +14,7 @@ class Diffuse(Material):
         self,
         diff_color,
         diff_color_ref=rgb(0.5, 0.5, 0.5),
-        diffuse_rays=10,
+        diffuse_rays=1,
         ambient_weight=0.5,
         ambient_weight_ref=0.5,
         **kwargs
@@ -194,9 +194,10 @@ class Diffuse(Material):
         # Weight this colour by the probability of having sampled each ray
         # We use the Lambertian BRDF
         color_temp = color_temp * NdotL / PDF_val / np.pi
+        color_temp = color_temp * NdotL / np.pi
         # I am not sure this change is justified, but its kinda necessary
         # color_temp_ref = color_temp * NdotL / PDF_val_ref / np.pi
-        color_temp_ref = color_temp  # * NdotL / PDF_val / np.pi
+        color_temp_ref = color_temp * NdotL / np.pi
 
         # Collect the ray colors
         n_rays = out_ray.log_p_z.shape[0]
@@ -208,7 +209,7 @@ class Diffuse(Material):
         # this will simply make the ref prob 0 if color_temp and color_temp_ref do not match for a given ray.
         col_matches = (out_ray.color - color_ref).abs() < 1e-6
 
-        assert all(col_matches)
-        # out_ray.p_z_ref = out_ray.p_z_ref * col_matches
+        # assert all(col_matches)
+        out_ray.log_p_z_ref = np.where(~col_matches, out_ray.log_p_z_ref, 1)
 
         return out_ray

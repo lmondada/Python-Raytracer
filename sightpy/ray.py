@@ -312,9 +312,10 @@ def get_raycolor(ray, scene, max_index=0):
             else:
                 full_hit_check = hit_check
 
-            ray_out.place(
-                full_hit_check, sub_rays.extract(original_mask),
-            )
+            if np.any(original_mask):
+                ray_out.place(
+                    full_hit_check, sub_rays.extract(original_mask),
+                )
             # Then add the rest to the end
             ray_out = ray_out.combine(sub_rays.extract(np.logical_not(original_mask)))
 

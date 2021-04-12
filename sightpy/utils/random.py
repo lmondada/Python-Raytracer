@@ -4,8 +4,8 @@ from ..utils.vector3 import vec3
 from abc import abstractmethod
 
 
-def random_in_0_1(shape):
-    return np.random.Generator.uniform(size=shape)
+def random_in_0_1(*shape):
+    return np.random.rand(*shape)
 
 
 def random_in_unit_disk(shape):
@@ -246,7 +246,7 @@ class normal_array_pdf(PDF):
         """Evaluate the log normal at the given point."""
         epsilon = 1e-5
         val = norm.logpdf(x, self.mu, self.sigma) + np.log(epsilon)
-        assert max(val) <= 0
+        assert np.max(val) <= 0
         return val
 
     def generate(self) -> np.array:

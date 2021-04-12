@@ -22,67 +22,57 @@ class vec3:
         # Used for debugging. This method is called when you print an instance
         return "(" + str(self.x) + ", " + str(self.y) + ", " + str(self.z) + ")"
 
-    # @primitive
     def __add__(self, v):
         if isinstance(v, vec3):
             return vec3(self.x + v.x, self.y + v.y, self.z + v.z)
         elif isinstance(v, numbers.Number) or isinstance(v, np.ndarray):
             return vec3(self.x + v, self.y + v, self.z + v)
 
-    # @primitive
     def __radd__(self, v):
         if isinstance(v, vec3):
             return vec3(self.x + v.x, self.y + v.y, self.z + v.z)
         elif isinstance(v, numbers.Number) or isinstance(v, np.ndarray):
             return vec3(self.x + v, self.y + v, self.z + v)
 
-    # @primitive
     def __sub__(self, v):
         if isinstance(v, vec3):
             return vec3(self.x - v.x, self.y - v.y, self.z - v.z)
         elif isinstance(v, numbers.Number) or isinstance(v, np.ndarray):
             return vec3(self.x - v, self.y - v, self.z - v)
 
-    # @primitive
     def __rsub__(self, v):
         if isinstance(v, vec3):
             return vec3(v.x - self.x, v.y - self.y, v.z - self.z)
         elif isinstance(v, numbers.Number) or isinstance(v, np.ndarray):
             return vec3(v - self.x, v - self.y, v - self.z)
 
-    # @primitive
     def __mul__(self, v):
         if isinstance(v, vec3):
             return vec3(self.x * v.x, self.y * v.y, self.z * v.z)
         elif isinstance(v, numbers.Number) or isinstance(v, np.ndarray):
             return vec3(self.x * v, self.y * v, self.z * v)
 
-    # @primitive
     def __rmul__(self, v):
         if isinstance(v, vec3):
             return vec3(v.x * self.x, v.y * self.y, v.z * self.z)
         elif isinstance(v, numbers.Number) or isinstance(v, np.ndarray):
             return vec3(v * self.x, v * self.y, v * self.z)
 
-    # @primitive
     def __truediv__(self, v):
         if isinstance(v, vec3):
             return vec3(self.x / v.x, self.y / v.y, self.z / v.z)
         elif isinstance(v, numbers.Number) or isinstance(v, np.ndarray):
             return vec3(self.x / v, self.y / v, self.z / v)
 
-    # @primitive
     def __rtruediv__(self, v):
         if isinstance(v, vec3):
             return vec3(v.x / self.x, v.y / self.y, v.z / self.z)
         elif isinstance(v, numbers.Number) or isinstance(v, np.ndarray):
             return vec3(v / self.x, v / self.y, v / self.z)
 
-    # @primitive
     def abs(self):
         return vec3(np.abs(self.x), np.abs(self.y), np.abs(self.z))
 
-    # @primitive
     def __abs__(self):
         return self.abs()
 
@@ -117,7 +107,6 @@ class vec3:
             self.dot(new_basis[0]), self.dot(new_basis[1]), self.dot(new_basis[2])
         )
 
-    # @primitive
     def __pow__(self, a):
         return vec3(self.x ** a, self.y ** a, self.z ** a)
 
